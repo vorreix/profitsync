@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql, type SQL, type SQLWrapper } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { clients, quotations, transactions } from "../../src/lib/db/schema.js"
+import { clients, organizations, quotations, transactions } from "../../src/lib/db/schema.js"
 import { entityTags } from "../../src/lib/tags.js"
 
 // Shared "show me every entity matching X" drilldown, used by both the tag and
@@ -18,6 +18,11 @@ export type DrilldownItem = {
   subtitle: string
   amount: string | null
   tx_type: string | null // "incoming" | "outgoing" for transactions
+  tx_kind: string | null // standard | refund | transfer — a system-written title is translated by it
+  // Money is shown in its OWN currency and compared in the reporting one: a
+  // ₹9,000 row in a € workspace is "₹9,000", and ranks below €100 (MC-051).
+  currency_code: string | null
+  reporting_amount: string | null // null when no rate is stored for its day
   status: string | null
   date: string | null
   category: string
@@ -26,6 +31,14 @@ export type DrilldownItem = {
 }
 
 export type DrilldownSort = "date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "name_asc"
+
+// `amount` in the org's reporting currency (NULL when no rate is stored for
+// `on`) — the same reporting_amount() call as tx-sql's convertedSql, but with
+// the target read by a scalar subquery: the routes run the branches in
+// parallel, and awaiting reportingCurrencyFor first cost each one an extra
+// round trip in series.
+export const inReporting = (orgId: string, amount: SQLWrapper, currency: SQLWrapper, on: SQLWrapper) =>
+  sql<string | null>`reporting_amount(${amount}::numeric, ${currency}, ${on}, (select coalesce(${organizations.reportingCurrency}, ${organizations.currency}, 'USD') from ${organizations} where ${organizations.id} = ${orgId}))`
 
 const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
 
@@ -48,7 +61,10 @@ export async function fetchTransactionItems(
       description: transactions.description,
       clientName: clients.name,
       amount: transactions.amount,
+      currencyCode: transactions.currencyCode,
+      reportingAmount: inReporting(orgId, transactions.amount, transactions.currencyCode, transactions.date),
       type: transactions.type,
+      kind: transactions.kind,
       date: transactions.date,
       category: transactions.category,
       tags: transactions.tags,
@@ -63,6 +79,9 @@ export async function fetchTransactionItems(
     subtitle: r.clientName ?? "",
     amount: r.amount ?? null,
     tx_type: r.type ?? null,
+    tx_kind: r.kind ?? null,
+    currency_code: r.currencyCode ?? null,
+    reporting_amount: r.reportingAmount ?? null,
     status: null,
     date: r.date ?? null,
     category: r.category ?? "",
@@ -97,6 +116,9 @@ export async function fetchClientItems(
     subtitle: r.company ?? "",
     amount: null,
     tx_type: null,
+    tx_kind: null,
+    currency_code: null,
+    reporting_amount: null,
     status: r.status ?? null,
     date: r.createdAt ? new Date(r.createdAt).toISOString().split("T")[0] : null,
     category: r.category ?? "",
@@ -118,6 +140,8 @@ export async function fetchQuotationItems(
       title: quotations.title,
       prospectName: quotations.prospectName,
       amount: quotations.amount,
+      currencyCode: quotations.currencyCode,
+      reportingAmount: inReporting(orgId, quotations.amount, quotations.currencyCode, quotations.date),
       status: quotations.status,
       date: quotations.date,
       category: quotations.category,
@@ -132,6 +156,9 @@ export async function fetchQuotationItems(
     subtitle: r.prospectName ?? "",
     amount: r.amount ?? null,
     tx_type: null,
+    tx_kind: null,
+    currency_code: r.currencyCode ?? null,
+    reporting_amount: r.reportingAmount ?? null,
     status: r.status ?? null,
     date: r.date ?? null,
     category: r.category ?? "",
@@ -140,18 +167,28 @@ export async function fetchQuotationItems(
   }))
 }
 
-/** Stable cross-entity ordering of the merged item list. */
+/**
+ * Stable cross-entity ordering of the merged item list. Amounts compare in the
+ * REPORTING currency (₹9,000 ≈ €98 ranks below €100); what has no comparable
+ * figure — a client, or a row with no rate — sorts after every amount in both
+ * directions rather than posing as zero.
+ */
 export function sortDrilldown(items: DrilldownItem[], sort: DrilldownSort): DrilldownItem[] {
-  const amount = (i: DrilldownItem) => Number(i.amount ?? 0)
+  const amount = (i: DrilldownItem) => (i.reporting_amount == null ? null : Number(i.reporting_amount))
+  const byAmount = (dir: 1 | -1) => (a: DrilldownItem, b: DrilldownItem) => {
+    const x = amount(a), y = amount(b)
+    if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1
+    return dir * (x - y)
+  }
   const day = (i: DrilldownItem) => i.date ?? ""
   const arr = [...items]
   switch (sort) {
     case "date_asc":
       return arr.sort((a, b) => day(a).localeCompare(day(b)) || a.title.localeCompare(b.title))
     case "amount_desc":
-      return arr.sort((a, b) => amount(b) - amount(a) || day(b).localeCompare(day(a)))
+      return arr.sort((a, b) => byAmount(-1)(a, b) || day(b).localeCompare(day(a)))
     case "amount_asc":
-      return arr.sort((a, b) => amount(a) - amount(b) || day(b).localeCompare(day(a)))
+      return arr.sort((a, b) => byAmount(1)(a, b) || day(b).localeCompare(day(a)))
     case "name_asc":
       return arr.sort((a, b) => a.title.localeCompare(b.title))
     case "date_desc":

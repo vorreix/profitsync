@@ -5,13 +5,15 @@ import { clients, recurringRules, transactions, wealthAccounts } from "../../src
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota, checkTransactionTagQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
-import { balanceDelta } from "../../src/lib/wealth-ledger.js"
-import { amountExceedsLimit } from "../../src/lib/money.js"
+import { balanceShiftCte, ledgerMovesSql } from "../_lib/tx-legs.js"
+import { amountExceedsLimit, moneyRefusal } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
 import { refundShapeValid } from "../../src/lib/tx-classify.js"
-import { expenseSumSql, incomeSumSql, pnlKindFilter, USER_KINDS } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, nativeSummarySql, pnlKindFilter, reportingAmountSql, USER_KINDS, withFx, type FxTarget } from "../_lib/tx-sql.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { groupMoneySql } from "../_lib/tx-group-sql.js"
 import { attributeCard, cardTransactionFilter } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 
@@ -19,21 +21,30 @@ const PAGE_SIZE = 20
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-function pickOrder(sort: string | undefined) {
+// An amount sort compares rows in the REPORTING currency (each converted at its
+// own date) — native amounts of different currencies are not comparable (₹5,000
+// is not more than €100). A row with no rate has no comparable amount and sorts
+// last in both directions.
+function pickOrder(sort: string | undefined, reporting: string) {
   switch (sort) {
     case "date_asc":
       return [asc(transactions.date), asc(transactions.createdAt)]
     case "amount_desc":
-      return [desc(sql`${transactions.amount}::numeric`), desc(transactions.createdAt)]
+      return [sql`${reportingAmountSql(reporting)} desc nulls last`, desc(transactions.createdAt)]
     case "amount_asc":
-      return [asc(sql`${transactions.amount}::numeric`), desc(transactions.createdAt)]
+      return [sql`${reportingAmountSql(reporting)} asc nulls last`, desc(transactions.createdAt)]
     case "date_desc":
     default:
       return [desc(transactions.date), desc(transactions.createdAt)]
   }
 }
 
-const txFields = {
+// A row's money is NATIVE: `amount` in `currency_code` (its account's currency).
+// `reporting_amount` is the same figure converted at the row's date into the
+// workspace's reporting currency — NULL when no rate is stored for that day —
+// so a screen that sums rows client-side (the dashboard) can add like with like
+// and count what it could not convert, instead of adding EUR to INR.
+const txFieldsFor = (reporting: string) => ({
   id: transactions.id,
   clientId: transactions.clientId,
   clientName: clients.name,
@@ -48,6 +59,8 @@ const txFields = {
   kind: transactions.kind,
   type: transactions.type,
   amount: transactions.amount,
+  currencyCode: transactions.currencyCode,
+  reportingAmount: reportingAmountSql(reporting),
   description: transactions.description,
   category: transactions.category,
   tags: transactions.tags,
@@ -62,7 +75,7 @@ const txFields = {
   // the UI can badge a transfer to/from a Space and deep-link to it.
   counterpartAccountId: sql<string | null>`(select t2.wealth_account_id::text from transactions t2 where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
   counterpartType: sql<string | null>`(select wa.type from transactions t2 join wealth_accounts wa on wa.id = t2.wealth_account_id where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
-}
+})
 
 // A split transaction's legs share a `group_id`; everywhere that isn't scoped to
 // a single account we collapse them into ONE representative row. The grouping key
@@ -70,7 +83,7 @@ const txFields = {
 // each form their own one-row "group" and pass through unchanged.
 const groupKey = sql`coalesce(${transactions.groupId}, ${transactions.id})`
 
-const groupedFields = {
+const groupedFieldsFor = (reporting: string, fx: FxTarget) => ({
   // Representative leg id (earliest-created) — used to open the detail view.
   id: sql<string>`(array_agg(${transactions.id} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
   clientId: sql<string>`max(${transactions.clientId}::text)`,
@@ -91,7 +104,12 @@ const groupedFields = {
   legCount: sql<number>`count(*)::int`,
   accountCount: sql<number>`count(distinct ${transactions.wealthAccountId})::int`,
   type: sql<string>`max(${transactions.type})`,
-  amount: sql<string>`sum(${transactions.amount}::numeric)`,
+  // A split's legs add up ONLY when they share a currency. Legs posted to
+  // accounts in different currencies are summed in the reporting currency
+  // instead (each at its own date) and the row says so via currency_code —
+  // never a raw sum of EUR and INR. `amount` is NULL when a leg has no rate
+  // (api/_lib/tx-group-sql.ts — shared with GET /api/transactions/:id).
+  ...groupMoneySql(reporting, fx),
   description: sql<string>`max(${transactions.description})`,
   category: sql<string>`max(${transactions.category})`,
   // Group-level metadata: every leg carries the same tags, take the first leg's.
@@ -104,16 +122,18 @@ const groupedFields = {
   createdAt: sql<string>`max(${transactions.createdAt})`,
   updatedAt: sql<string>`max(${transactions.updatedAt})`,
   attachmentCount: sql<number>`coalesce(sum((select count(*) from transaction_attachments where transaction_id = ${transactions.id})), 0)::int`,
-}
+})
 
-function groupedOrder(sort: string | undefined) {
+// Same rule as pickOrder: a group sorts by its total in the reporting currency,
+// and a group with a leg that has no rate sorts last.
+function groupedOrder(sort: string | undefined, reporting: string, fx: FxTarget) {
   switch (sort) {
     case "date_asc":
       return [asc(sql`max(${transactions.date})`), asc(sql`max(${transactions.createdAt})`)]
     case "amount_desc":
-      return [desc(sql`sum(${transactions.amount}::numeric)`), desc(sql`max(${transactions.createdAt})`)]
+      return [sql`${groupMoneySql(reporting, fx).reportingAmount} desc nulls last`, desc(sql`max(${transactions.createdAt})`)]
     case "amount_asc":
-      return [asc(sql`sum(${transactions.amount}::numeric)`), desc(sql`max(${transactions.createdAt})`)]
+      return [sql`${groupMoneySql(reporting, fx).reportingAmount} asc nulls last`, desc(sql`max(${transactions.createdAt})`)]
     case "date_desc":
     default:
       return [desc(sql`max(${transactions.date})`), desc(sql`max(${transactions.createdAt})`)]
@@ -122,15 +142,23 @@ function groupedOrder(sort: string | undefined) {
 
 type SqlWhere = ReturnType<typeof and>
 
-async function groupedRows(where: SqlWhere, sort: string | undefined, limit?: number, offset?: number) {
-  const q = db
-    .select(groupedFields)
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+// The group money of EVERY group in scope is computed before the sort and the
+// page limit, so its rates are joined once per (currency, day) when the
+// workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+async function groupedRows(where: SqlWhere, sort: string | undefined, reporting: string, orgRates: { currencies: readonly string[] } | undefined, limit?: number, offset?: number) {
+  const fx = fxFor(reporting, where, orgRates)
+  const q = withFx(
+    db
+      .select(groupedFieldsFor(reporting, fx))
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+      .$dynamic(),
+    fx,
+  )
     .where(where)
     .groupBy(groupKey)
-    .orderBy(...groupedOrder(sort))
+    .orderBy(...groupedOrder(sort, reporting, fx))
   if (limit !== undefined && offset !== undefined) return await q.limit(limit).offset(offset)
   if (limit !== undefined) return await q.limit(limit)
   return await q
@@ -158,6 +186,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Card statements / autopay must have moved money before any list renders
     // (idempotent, short-circuits when the org has no open credit card).
     await syncCards(orgId).catch((err) => console.error("[cards] sync failed", err))
+    // Rows stay native; the summary and each row's `reporting_amount` are in the
+    // workspace's reporting currency, converted at the row's own date.
+    const reporting = await reportingCurrencyFor(orgId)
+    const orgRates = await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    const txFields = txFieldsFor(reporting)
 
     const { clientId, wealthAccountId: accountParam, cardId, recurringRuleId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
       clientId?: string; wealthAccountId?: string; cardId?: string; recurringRuleId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
@@ -226,7 +259,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // `?includeClosed=1` brings them back (dashboard "show closed" toggle).
     const closedClientFilter = includeClosed === "1" || recurringRuleId ? undefined : isNull(clients.closedAt)
 
-    const orderBy = pickOrder(sort)
+    const orderBy = pickOrder(sort, reporting)
 
     if (clientId) {
       const [client] = await db
@@ -237,7 +270,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const clientWhere = and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter, listExcludesTransfers)
       const rows = grouped
-        ? await groupedRows(clientWhere, sort)
+        ? await groupedRows(clientWhere, sort, reporting, orgRates)
         : await db
             .select(txFields)
             .from(transactions)
@@ -299,15 +332,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         closedClientFilter,
         accountFilter,
         recurringFilter,
-        // The income/expense summary never counts internal transfers (net zero);
-        // refunds are in scope and net against outgoing (api/_lib/tx-sql.ts).
+        // The income/expense summary never counts internal transfers (net zero)
+        // nor system Opening Balance / Balance Adjustment rows (they define a
+        // balance, not P&L — same as analytics, calendar and flow); refunds are
+        // in scope and net against outgoing (api/_lib/tx-sql.ts).
         pnlKindFilter,
+        eq(transactions.isSystem, false),
         searchFilter,
         categoryFilter,
         tagFilter,
         dateFromFilter,
         dateToFilter,
       )
+      // The summary's rates, looked up once per (currency, day) it covers, when
+      // the workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+      const fx = fxFor(reporting, summaryWhere, orgRates)
 
       // Count (of groups, when grouping), page rows and summary are independent —
       // run as one parallel batch. The summary sums RAW legs: a split's legs add
@@ -322,7 +361,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .where(whereClause)
               .then((r) => Number(r[0]?.total ?? 0)),
         grouped
-          ? groupedRows(whereClause, sort, PAGE_SIZE, offset)
+          ? groupedRows(whereClause, sort, reporting, orgRates, PAGE_SIZE, offset)
           : db
               .select(txFields)
               .from(transactions)
@@ -332,20 +371,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .orderBy(...orderBy)
               .limit(PAGE_SIZE)
               .offset(offset),
-        db
-          .select({
-            incoming: incomeSumSql,
-            outgoing: expenseSumSql,
-          })
-          .from(transactions)
-          .innerJoin(clients, eq(transactions.clientId, clients.id))
-          .where(summaryWhere),
+        withFx(
+          db
+            .select({
+              incoming: incomeSumSqlIn(fx),
+              outgoing: expenseSumSqlIn(fx),
+              excluded: missingRateCountSql(fx),
+              nativeIncoming: nativeSummarySql.incoming,
+              nativeOutgoing: nativeSummarySql.outgoing,
+              nativeCurrency: nativeSummarySql.currency,
+            })
+            .from(transactions)
+            .innerJoin(clients, eq(transactions.clientId, clients.id))
+            .$dynamic(),
+          fx,
+        ).where(summaryWhere),
       ])
 
       return res.json({
         data: rows.map(serialize),
         total,
-        summary: { incoming: Number(summaryRow.incoming), outgoing: Number(summaryRow.outgoing) },
+        currency: reporting,
+        summary: {
+          incoming: Number(summaryRow.incoming),
+          outgoing: Number(summaryRow.outgoing),
+          currency: reporting,
+          excluded_count: Number(summaryRow.excluded ?? 0),
+          // An account's (or a card's) page reads its figures in the ACCOUNT's
+          // currency — every row on it posts in that one, so nothing is
+          // converted or left out (MC-009). Additive: older builds ignore it.
+          ...(wealthAccountId
+            ? { native: { incoming: Number(summaryRow.nativeIncoming), outgoing: Number(summaryRow.nativeOutgoing), currency: summaryRow.nativeCurrency ?? null } }
+            : {}),
+        },
       })
     }
 
@@ -354,7 +412,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (limit !== undefined) {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
       const rows = grouped
-        ? await groupedRows(whereClause, sort, limitNum)
+        ? await groupedRows(whereClause, sort, reporting, orgRates, limitNum)
         : await db
             .select(txFields)
             .from(transactions)
@@ -367,7 +425,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rows = grouped
-      ? await groupedRows(whereClause, sort)
+      ? await groupedRows(whereClause, sort, reporting, orgRates)
       : await db
           .select(txFields)
           .from(transactions)
@@ -412,6 +470,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // A debt's balance only moves through repayments (principal = transfer,
     // interest/fees = expenses on the paying account) — see /api/debts/:id/payments.
     if (account.type === "loan" || account.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
+    // A row with no currency would read as "already in the reporting currency"
+    // forever, and change meaning with the next reporting change. Same refusal
+    // as PATCH.
+    if (!account.currencyCode) return res.status(409).json({ error: "Account currency migration is incomplete", code: "currency_missing" })
+    // To the account currency's decimals (none for ¥): the row's numeric(20,2)
+    // would round 1.235 while the balance below adds it unrounded (MC-047).
+    const badAmount = moneyRefusal(account.currencyCode, amount)
+    if (badAmount) return res.status(400).json(badAmount)
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.
@@ -437,36 +503,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!tagQuota.allowed) return res.status(402).json(tagQuota)
 
     const today = new Date().toISOString().split("T")[0]
-    const [row] = await db
-      .insert(transactions)
-      .values({
-        clientId,
-        wealthAccountId: wealth_account_id,
-        cardId: attributed.cardId,
-        kind,
-        type,
-        amount: String(amount),
-        description: description ?? "",
-        category: category ?? "",
-        tags: cleanedTags,
-        date: date ?? today,
-        // isSystem is server-only: user-created transactions are never system rows.
-        createdBy: userId,
-        updatedBy: userId,
-      })
-      .returning()
-    // Relative SQL delta — NEVER read-compute-write the balance in JS: two
-    // concurrent posts to the same account raced and lost an update. (Same
-    // pattern as every other money path; a crash between the two statements is
-    // repairable by recomputing from the ledger.)
-    await db
-      .update(wealthAccounts)
-      .set({
-        currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${balanceDelta(type, amount)}`,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(wealthAccounts.id, wealth_account_id))
+    // The row and its balance in ONE statement (api/_lib/tx-legs.ts): two
+    // statements left a row without its balance when the second failed
+    // (MC-059). Relative delta — NEVER read-compute-write the balance in JS
+    // (two concurrent posts to one account lost an update). Not idempotent
+    // across requests: a client retry is a new POST (MC-060).
+    const created = db.$with("created").as(
+      db
+        .insert(transactions)
+        .values({
+          clientId,
+          wealthAccountId: wealth_account_id,
+          cardId: attributed.cardId,
+          kind,
+          type,
+          amount: String(amount),
+          currencyCode: account.currencyCode,
+          description: description ?? "",
+          category: category ?? "",
+          tags: cleanedTags,
+          date: date ?? today,
+          // isSystem is server-only: user-created transactions are never system rows.
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning(),
+    )
+    const [row] = await db.with(created, balanceShiftCte(ledgerMovesSql("created", "create"), userId)).select().from(created)
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     // Budget-exceeded alert (fire-and-forget): never blocks or fails the write.
     if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId, { category: row.category, date: row.date }).catch(() => {})

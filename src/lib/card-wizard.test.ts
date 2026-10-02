@@ -3,6 +3,8 @@ import type { Card, WealthAccount } from "./types"
 import {
   CARD_WIZARD_FIELD_FOR_CODE,
   CARD_WIZARD_FIELD_SELECTOR,
+  accountCurrencyIn,
+  autopayCurrencyMismatch,
   cardCreatePayload,
   cardEditPayload,
   cardPreviewProps,
@@ -11,6 +13,8 @@ import {
   cardWizardFormFromCard,
   cardWizardStepForField,
   cardWizardSteps,
+  cardWizardCurrency,
+  cardWizardSubmitForm,
   customTextUnreadable,
   defaultHolderName,
   duplicateLast4,
@@ -495,5 +499,58 @@ describe("dirty", () => {
     const a = debitForm()
     expect(cardWizardDirty(a, { ...a })).toBe(false)
     expect(cardWizardDirty({ ...a, name: "x" }, a)).toBe(true)
+  })
+})
+
+describe("card currency (MC-024 / MC-025)", () => {
+  it("defaults a new card to the issuing bank's currency, else the reporting one; a choice wins", () => {
+    expect(cardWizardCurrency(creditForm(), bank({ currency_code: "INR" }), "EUR")).toBe("INR")
+    expect(cardWizardCurrency(creditForm(), bank({ currency_code: null }), "EUR")).toBe("EUR")
+    expect(cardWizardCurrency(creditForm(), null, "EUR")).toBe("EUR")
+    expect(cardWizardCurrency(creditForm({ currency_code: "USD" }), bank({ currency_code: "INR" }), "EUR")).toBe("USD")
+  })
+
+  it("keeps an edited card in its own currency — never re-derived from the issuer", () => {
+    const f = cardWizardFormFromCard(card({ account_currency_code: "JPY" }))
+    expect(f.currency_code).toBe("JPY")
+    expect(cardWizardCurrency(f, bank({ currency_code: "INR" }), "EUR", "edit")).toBe("JPY")
+    // A legacy card without one reads as the reporting currency, like the server.
+    const legacy = cardWizardFormFromCard(card({ account_currency_code: null }))
+    expect(cardWizardCurrency(legacy, bank({ currency_code: "INR" }), "EUR", "edit")).toBe("EUR")
+    expect(cardWizardFormFromCard(card({ kind: "debit", account_currency_code: "INR" })).currency_code).toBe("")
+  })
+
+  it("reads an account's currency by id, legacy NULL as the reporting currency", () => {
+    const accounts = [bank({ id: "a", currency_code: "INR" }), bank({ id: "b", currency_code: null })]
+    expect(accountCurrencyIn(accounts, "a", "EUR")).toBe("INR")
+    expect(accountCurrencyIn(accounts, "b", "EUR")).toBe("EUR")
+    expect(accountCurrencyIn(accounts, "", "EUR")).toBeNull()
+  })
+
+  it("flags autopay only when a payer exists in another currency", () => {
+    expect(autopayCurrencyMismatch("EUR", "INR")).toBe(true)
+    expect(autopayCurrencyMismatch("INR", "INR")).toBe(false)
+    expect(autopayCurrencyMismatch(null, "INR")).toBe(false)
+  })
+
+  it("sends the currency explicitly and never autopay from a payer in another currency", () => {
+    const sent = cardWizardSubmitForm(creditForm({ autopay: true }), "INR", "EUR")
+    expect(sent.currency_code).toBe("INR")
+    expect(sent.autopay).toBe(false)
+    expect(cardWizardSubmitForm(creditForm({ autopay: true }), "INR", "INR").autopay).toBe(true)
+    const body = cardCreatePayload(sent) as { autopay: boolean; credit: { currency_code?: string } }
+    expect(body.credit.currency_code).toBe("INR")
+    expect(body.autopay).toBe(false)
+    expect((cardEditPayload(cardWizardSubmitForm(creditForm(), "JPY", null)) as { credit: { currency_code?: string } }).credit.currency_code).toBe("JPY")
+    // A debit card has no currency of its own.
+    expect(cardWizardSubmitForm(debitForm(), "INR", "EUR")).toEqual(debitForm())
+    expect("currency_code" in (cardCreatePayload(creditForm()) as { credit: object }).credit).toBe(false)
+  })
+
+  it("points the server's currency refusals at the right field", () => {
+    expect(cardWizardFieldForServerError({ code: "autopay_currency_mismatch" })).toBe("funding_account_id")
+    expect(cardWizardFieldForServerError({ code: "account_currency_locked" })).toBe("currency_code")
+    expect(cardWizardFieldForServerError({ code: "invalid_currency" })).toBe("currency_code")
+    expect(cardWizardStepForField("currency_code")).toBe("credit")
   })
 })

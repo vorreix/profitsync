@@ -4,7 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { invoices, organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { defaultDodoEnv, fetchInvoicePdf, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { amountExceedsLimit, isCurrencyCode, normalizeCurrencyCode } from "../../../src/lib/money.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["draft", "open", "paid", "uncollectible", "void", "refunded"]
@@ -112,6 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (!organization_id) return res.status(400).json({ error: "organization_id is required" })
     if (amount != null && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
+    // Free text from the admin form: 'EURO' or 'usd ' used to be stored and then
+    // crashed the org's /subscription page in Intl (MC-163).
+    const invoiceCurrency = currency == null || currency === "" ? "USD" : currency
+    if (!isCurrencyCode(invoiceCurrency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     const [created] = await db
       .insert(invoices)
@@ -119,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         organizationId: organization_id,
         subscriptionId: subscription_id ?? null,
         amount: String(amount ?? "0"),
-        currency: currency ?? "USD",
+        currency: normalizeCurrencyCode(invoiceCurrency),
         status: status && VALID_STATUSES.includes(status) ? status : "draft",
         ...(status === "paid" ? { paidAt: new Date() } : {}),
       })

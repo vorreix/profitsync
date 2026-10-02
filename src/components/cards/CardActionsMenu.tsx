@@ -228,7 +228,7 @@ export function CardActionsMenu({
       <AlertDialog open={debtBlock !== null} onOpenChange={(o) => { if (!o) setDebtBlock(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("cards.payOffTitle", { amount: formatMoney(debtBlock ?? 0, currency) })}</AlertDialogTitle>
+            <AlertDialogTitle>{t("cards.payOffTitle", { amount: formatMoney(debtBlock ?? 0, card.account_currency_code || currency) })}</AlertDialogTitle>
             <AlertDialogDescription>{t("cards.payOffDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

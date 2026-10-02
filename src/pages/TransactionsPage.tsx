@@ -3,7 +3,7 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost, apiPatch, apiDelete, apiErrorUpgradeHint } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiErrorMessage, apiErrorUpgradeHint } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isPaidPlanKey, type Card, type Client, type Transaction, type TransactionAttachment, type WealthAccount } from "@/lib/types"
 import { tagLimitForPlan } from "@/lib/tags"
@@ -36,16 +36,23 @@ import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { TransactionAttachments } from "@/components/transactions/TransactionAttachments"
 import { AuditHistory } from "@/components/AuditHistory"
-import { accountDisplayName } from "@/lib/wealth"
+import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { TxFormFields } from "@/components/transactions/tx-form"
 import { allocationFor, allocationPayload, formatFileSize, isCardUnusableError, type TxForm } from "@/components/transactions/tx-form-utils"
 import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { rowCurrency } from "@/lib/reporting-fields"
+import { summaryWithout, type TxSummary } from "@/lib/tx-reporting"
 import { appLocale } from "@/lib/format-date"
 
-type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
+// The summary is converted server-side into the workspace's reporting currency
+// (`summary.currency`), each row at its own date; `excluded_count` is what had
+// no rate. Rows themselves stay NATIVE — see rowCurrency.
+type PaginatedResponse<T> = { data: T[]; total: number; currency?: string; summary?: TxSummary }
 
 // A collapsed split row also reports how many DISTINCT cards paid its legs
 // (GET /api/transactions groupedFields.cardCount) — "3 cards" beats one
@@ -90,10 +97,17 @@ const TransactionRow = memo(function TransactionRow({
 }: TransactionRowProps) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+  // The row's amount is NATIVE: its account's currency, falling back to the
+  // workspace's only for a legacy row with no tag.
+  const fmt = (n: number) => formatMoney(n, rowCurrency(tx, currency))
+  // A fee / reversal row the transfer engine wrote reads in the UI language.
+  const description = ledgerDescription(tx, t)
   const legCount = tx.leg_count ?? 1
   const cardCount = tx.card_count ?? 0
+  // A split whose legs are in different currencies is totalled in the
+  // reporting currency (≈), and has NO honest total while a leg has no rate
+  // (amount null — api/_lib/tx-group-sql.ts): say so, never print 0 or a part.
+  const currencyCount = tx.currency_count ?? 1
 
   return (
     <div
@@ -127,8 +141,8 @@ const TransactionRow = memo(function TransactionRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <p className="text-sm font-medium truncate min-w-0 flex-1">
-            {tx.description
-              ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
+            {description
+              ? description.length > 60 ? description.slice(0, 60) + "…" : description
               : (tx.type === "incoming" ? t("income") : t("expense"))}
           </p>
           {(tx.leg_count ?? 1) > 1 && (
@@ -137,6 +151,11 @@ const TransactionRow = memo(function TransactionRow({
             </Badge>
           )}
           <TxKindBadge tx={tx} />
+          {tx.is_system && (
+            // Opening Balance / Balance Adjustment: listed (it moved an account) but
+            // never income or expense — the summary above leaves it out.
+            <Badge variant="outline" className="text-[10px] py-0 shrink-0" title={t("systemBadgeHint")}>{t("systemBadge")}</Badge>
+          )}
           {tx.recurring_rule_id && (
             <Badge
               variant="secondary"
@@ -201,8 +220,10 @@ const TransactionRow = memo(function TransactionRow({
 
       <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
         tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-      }`}>
-        {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
+      }`} title={currencyCount > 1 ? t("convertedSplitHint", { n: currencyCount }) : undefined}>
+        {tx.amount == null
+          ? <span className="text-xs font-medium text-muted-foreground">{t("amountNoRate")}</span>
+          : <>{tx.type === "incoming" ? "+" : "−"}{currencyCount > 1 ? "≈" : ""}{fmt(Number(tx.amount))}</>}
       </p>
 
       <div className={`hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${selectionMode ? "sm:hidden" : ""}`}>
@@ -246,8 +267,9 @@ export function TransactionsPage() {
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+  // `code` names the currency a figure is in: a row's own for a row, the
+  // summary's reporting currency for the totals.
+  const fmt = (n: number, code: string = currency) => formatMoney(n, code)
 
   const [transactions, setTransactions] = useState<TxRow[]>([])
   const [total, setTotal] = useState(0)
@@ -270,7 +292,7 @@ export function TransactionsPage() {
   // calendar's "Open in Transactions" lands here pre-filtered).
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") ?? "")
   const [dateTo, setDateTo] = useState(() => searchParams.get("to") ?? "")
-  const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
+  const [summary, setSummary] = useState<TxSummary>({ incoming: 0, outgoing: 0 })
 
   // URL → state for the deep-linkable filters. The initial useState reads run
   // only on MOUNT, so in-app navigations to /transactions?from=…&category=…
@@ -494,9 +516,12 @@ export function TransactionsPage() {
   }
 
   // Income/expense totals come from the server (full filtered set), so they stay
-  // correct across pagination and reflect the search + category filters.
+  // correct across pagination and reflect the search + category filters. They are
+  // in the reporting currency the server converted them into.
   const totalIncoming = summary.incoming
   const totalOutgoing = summary.outgoing
+  const summaryCurrency = summary.currency || currency
+  const summaryExcluded = summary.excluded_count ?? 0
   const ownClientIds = useMemo(() => new Set(clients.filter((c) => c.is_own).map((c) => c.id)), [clients])
 
   // Identity-stable row callbacks (latest-ref pattern) so the memoized
@@ -566,7 +591,7 @@ export function TransactionsPage() {
           id: legs[0].id,
           group_id: tx.group_id,
           client_id: tx.client_id,
-          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", card_id: l.card_id ?? null, amount: String(l.amount) })),
+          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", card_id: l.card_id ?? null, amount: String(l.amount), currency_code: l.currency_code ?? null })),
           type: tx.type, kind: tx.kind === "refund" ? "refund" : "standard", description: tx.description, category: tx.category,
           tags: txTags(legs[0]), tag_draft: "", date: tx.date,
         })
@@ -594,11 +619,11 @@ export function TransactionsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       // A split (existing group, or a single edited into multiple accounts) is
-      // replaced wholesale: delete the old group (reverses balances) then recreate.
-      // A single→single edit stays a balance-preserving in-place PATCH.
+      // replaced wholesale in ONE atomic request: the old legs are swapped for
+      // the new ones server-side, nothing goes to Trash, and a refused save
+      // changes nothing (MC-046). A single→single edit stays an in-place PATCH.
       if (editForm.group_id || allocs.length > 1) {
-        await apiDelete(`/api/transactions/${editForm.id}`, token)
-        await apiPost("/api/transactions/group", token, {
+        await apiPut(`/api/transactions/group/${editForm.group_id ?? editForm.id}`, token, {
           client_id: editForm.client_id,
           type: editForm.type,
           kind: editForm.kind,
@@ -632,7 +657,7 @@ export function TransactionsPage() {
       // A tag/quota 402 → route to upgrade instead of a generic failure toast.
       if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); setEditOpen(false); navigate("/subscription"); return }
       if (isCardUnusableError(err)) { setEditSourceError(t("cardFrozenError")); toast.error(t("cardFrozenError")); return }
-      toast.error(t("failedToUpdateTransaction"))
+      toast.error(apiErrorMessage(err, t("failedToUpdateTransaction")))
     } finally {
       setSaving(false)
     }
@@ -641,22 +666,24 @@ export function TransactionsPage() {
   async function handleDelete() {
     if (!deleteId) return
     const id = deleteId
-    // Optimistic: remove the row instantly + adjust the summary; reconcile only on failure.
+    // Optimistic: remove the row instantly + take it out of the converted
+    // summary by its REPORTING amount and the shared classification (a refund
+    // un-nets expense). A row with no rate can't be taken out locally — the
+    // summary is reconciled from the server once the delete lands.
     const removed = transactions.find((t) => t.id === id)
+    const nextSummary = removed ? summaryWithout(summary, [removed], currency) : summary
     setDeleteId(null)
     setTransactions((prev) => prev.filter((tx) => tx.id !== id))
     setTotal((n) => Math.max(0, n - 1))
-    if (removed) {
-      const amt = Number(removed.amount)
-      setSummary((s) => removed.type === "incoming" ? { ...s, incoming: s.incoming - amt } : { ...s, outgoing: s.outgoing - amt })
-    }
+    if (nextSummary) setSummary(nextSummary)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/transactions/${id}`, token)
       toast.success(t("transactionDeleted"))
-    } catch {
-      toast.error(t("failedToDeleteTransaction"))
+      if (!nextSummary) fetchPage1({ silent: true })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("failedToDeleteTransaction")))
       fetchPage1({ silent: true }) // restore the row on failure
     }
   }
@@ -788,27 +815,29 @@ export function TransactionsPage() {
   async function handleBulkDelete() {
     if (sel.count === 0) return
     const ids = sel.selectedIds
-    // Optimistic: drop the selected rows + adjust the summary immediately.
+    // Optimistic: drop the selected rows + adjust the summary immediately — same
+    // rule as a single delete (reporting amounts, shared classification; the
+    // currency + excluded count stay). Reconciled from the server when a row
+    // can't be taken out locally.
     const removed = transactions.filter((tx) => ids.includes(tx.id))
+    const nextSummary = summaryWithout(summary, removed, currency)
     setTransactions((prev) => prev.filter((tx) => !ids.includes(tx.id)))
     setTotal((n) => Math.max(0, n - removed.length))
-    setSummary((s) => {
-      let incoming = s.incoming, outgoing = s.outgoing
-      for (const r of removed) {
-        if (r.type === "incoming") incoming -= Number(r.amount)
-        else outgoing -= Number(r.amount)
-      }
-      return { incoming, outgoing }
-    })
+    if (nextSummary) setSummary(nextSummary)
     sel.exitSelection()
     setBulkDeleting(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const { deleted } = await apiPost<{ deleted: number }>("/api/transactions/bulk-delete", token, { ids })
+      const { deleted, skipped_transactions } = await apiPost<{ deleted: number; skipped_transactions?: string[] }>("/api/transactions/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-    } catch {
-      toast.error(t("multiSelect.deleteFailed"))
+      // Skipped rows (a transfer fee selected on its own, a refused transfer, an
+      // Opening Balance / Balance Adjustment) were removed and subtracted
+      // optimistically — bring them back, and say why they are still there.
+      if (skipped_transactions?.length) toast.warning(t("multiSelect.keptRows", { count: skipped_transactions.length }))
+      if (!nextSummary || skipped_transactions?.length) fetchPage1({ silent: true })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("multiSelect.deleteFailed")))
       fetchPage1({ silent: true }) // restore rows on failure
     } finally {
       setBulkDeleting(false)
@@ -843,21 +872,24 @@ export function TransactionsPage() {
       </div>
 
       {!loading && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
-          <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("income")}</p>
-            <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalIncoming)}</FitText>
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
+            <div className="rounded-xl border p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("income")}</p>
+              <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalIncoming, summaryCurrency)}</FitText>
+            </div>
+            <div className="rounded-xl border p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("expenses")}</p>
+              <FitText className="text-red-600 dark:text-red-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalOutgoing, summaryCurrency)}</FitText>
+            </div>
+            <div className="rounded-xl border p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("net")}</p>
+              <FitText className={`mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">
+                {fmt(totalIncoming - totalOutgoing, summaryCurrency)}
+              </FitText>
+            </div>
           </div>
-          <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("expenses")}</p>
-            <FitText className="text-red-600 dark:text-red-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalOutgoing)}</FitText>
-          </div>
-          <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("net")}</p>
-            <FitText className={`mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">
-              {fmt(totalIncoming - totalOutgoing)}
-            </FitText>
-          </div>
+          <FxExcludedNotice count={summaryExcluded} />
         </div>
       )}
 
@@ -993,7 +1025,9 @@ export function TransactionsPage() {
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("amount")}</p>
                     <p className={`font-semibold mt-0.5 ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                      {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(viewTx.amount))}
+                      {viewTx.amount == null
+                        ? <span className="text-muted-foreground font-medium">{t("amountNoRate")}</span>
+                        : <>{viewTx.type === "incoming" ? "+" : "−"}{(viewTx.currency_count ?? 1) > 1 ? "≈" : ""}{fmt(Number(viewTx.amount), rowCurrency(viewTx, currency))}</>}
                     </p>
                   </div>
                   <div>
@@ -1037,7 +1071,7 @@ export function TransactionsPage() {
                   {viewTx.description && (
                     <div className="col-span-2">
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("description")}</p>
-                      <p className="mt-0.5 whitespace-pre-wrap">{viewTx.description}</p>
+                      <p className="mt-0.5 whitespace-pre-wrap">{ledgerDescription(viewTx, t)}</p>
                     </div>
                   )}
                   {viewTx.category && (
@@ -1080,7 +1114,7 @@ export function TransactionsPage() {
                               )}
                             </span>
                             <span className={`shrink-0 text-sm font-semibold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                              {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount))}
+                              {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount), rowCurrency(leg, currency))}
                             </span>
                           </div>
                           )
@@ -1134,7 +1168,7 @@ export function TransactionsPage() {
                             type="button"
                             className="flex flex-1 items-center gap-2 min-w-0 text-left"
                             onClick={() => viewTx && setViewAttachment({
-                              id: att.id, source: "transaction", source_id: viewTx.id, source_label: viewTx.description?.trim() || (viewTx.type === "incoming" ? t("income") : t("expense")),
+                              id: att.id, source: "transaction", source_id: viewTx.id, source_label: ledgerDescription(viewTx, t).trim() || (viewTx.type === "incoming" ? t("income") : t("expense")),
                               file_name: att.file_name, file_type: att.file_type, file_size: att.file_size,
                               created_at: att.created_at, display_name: att.display_name, tags: att.tags, category: att.category,
                             })}

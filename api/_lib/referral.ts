@@ -8,6 +8,7 @@ import {
   referrals,
 } from "../../src/lib/db/schema.js"
 import { createNotification } from "./notifications.js"
+import { isCurrencyCode, normalizeCurrencyCode } from "../../src/lib/money.js"
 
 const SETTINGS_ID = "default"
 
@@ -138,47 +139,116 @@ export async function creditReferralOnPaid(orgId: string, paymentAmount: number,
   }
 }
 
+/** One currency's referral money. Rewards are snapshotted in the currency they
+ *  were earned in (a percent reward in the payment's currency, a fixed one in the
+ *  programme's), so a balance only ever adds amounts of ONE currency. */
+export type ReferralBalance = {
+  currency: string
+  lifetimeEarned: number
+  eligibleEarned: number
+  /** Every live claim on the balance: requested + approved + paid payouts. */
+  outstanding: number
+  /** Claimed but not sent yet: requested + approved. */
+  pending: number
+  available: number
+}
+
 export type ReferralStats = {
   signups: number
   paid: number
-  lifetimeEarned: number
-  eligibleEarned: number
-  outstanding: number
-  available: number
-  currency: string
+  /** One balance per reward currency, largest available first. */
+  balances: ReferralBalance[]
+} & ReferralBalance // the flat legacy fields = balances[0] (store-pinned native builds read only these)
+
+const cents = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * Group earnings and payout claims by currency — never add across currencies.
+ * They used to be summed raw and labelled with the programme currency, so
+ * INR 249.75 + USD 2.50 read "Available $252.25" and a USD 252.25 payout passed
+ * the balance check (MC-005). Pure — the SQL only feeds it per-currency sums.
+ */
+export function referralBalances(
+  earned: { currency: string; lifetime: number; eligible: number }[],
+  claimed: { currency: string; outstanding: number; pending: number }[],
+): ReferralBalance[] {
+  const by = new Map<string, ReferralBalance>()
+  const at = (raw: string) => {
+    const currency = raw.trim().toUpperCase()
+    let b = by.get(currency)
+    if (!b) by.set(currency, (b = { currency, lifetimeEarned: 0, eligibleEarned: 0, outstanding: 0, pending: 0, available: 0 }))
+    return b
+  }
+  for (const e of earned) {
+    const b = at(e.currency)
+    b.lifetimeEarned += e.lifetime
+    b.eligibleEarned += e.eligible
+  }
+  for (const c of claimed) {
+    const b = at(c.currency)
+    b.outstanding += c.outstanding
+    b.pending += c.pending
+  }
+  return [...by.values()]
+    // A signed_up referral carries the column default currency and no money —
+    // it must not conjure an empty balance.
+    .filter((b) => b.lifetimeEarned > 0 || b.outstanding > 0)
+    .map((b) => ({
+      currency: b.currency,
+      lifetimeEarned: cents(b.lifetimeEarned),
+      eligibleEarned: cents(b.eligibleEarned),
+      outstanding: cents(b.outstanding),
+      pending: cents(b.pending),
+      available: Math.max(0, cents(b.eligibleEarned - b.outstanding)),
+    }))
+    .sort((a, b) => b.available - a.available || b.lifetimeEarned - a.lifetimeEarned || a.currency.localeCompare(b.currency))
 }
 
-// All money is computed server-side. `available` = eligible (past holding)
-// earnings minus everything already requested/approved/paid out.
+// All money is computed server-side, per currency. `available` = eligible (past
+// holding) earnings minus everything already requested/approved/paid out.
+// Eligible counts `paid_out` referrals too: a paid payout is already subtracted
+// as a claim, so dropping its referrals from the earnings as well took it off
+// twice and swallowed every later reward.
 export async function computeStats(userId: string): Promise<ReferralStats> {
-  const settings = await getReferralSettings()
+  const [earnedRows, claimedRows] = await Promise.all([
+    db
+      .select({
+        currency: referrals.rewardCurrency,
+        signups: sql<number>`count(*)::int`,
+        paid: sql<number>`count(*) filter (where ${referrals.status} in ('paid','paid_out'))::int`,
+        lifetime: sql<string>`coalesce(sum(case when ${referrals.status} in ('paid','paid_out') then ${referrals.rewardAmount}::numeric else 0 end), 0)`,
+        eligible: sql<string>`coalesce(sum(case when ${referrals.status} in ('paid','paid_out') and ${referrals.qualifyingAt} <= now() then ${referrals.rewardAmount}::numeric else 0 end), 0)`,
+      })
+      .from(referrals)
+      .where(eq(referrals.referrerUserId, userId))
+      .groupBy(referrals.rewardCurrency),
+    db
+      .select({
+        currency: payoutRequests.currency,
+        outstanding: sql<string>`coalesce(sum(case when ${payoutRequests.status} in ('requested','approved','paid') then ${payoutRequests.amount}::numeric else 0 end), 0)`,
+        pending: sql<string>`coalesce(sum(case when ${payoutRequests.status} in ('requested','approved') then ${payoutRequests.amount}::numeric else 0 end), 0)`,
+      })
+      .from(payoutRequests)
+      .where(eq(payoutRequests.userId, userId))
+      .groupBy(payoutRequests.currency),
+  ])
 
-  const [counts] = await db
-    .select({
-      signups: sql<number>`count(*)::int`,
-      paid: sql<number>`count(*) filter (where ${referrals.status} in ('paid','paid_out'))::int`,
-      lifetime: sql<string>`coalesce(sum(case when ${referrals.status} in ('paid','paid_out') then ${referrals.rewardAmount}::numeric else 0 end), 0)`,
-      eligible: sql<string>`coalesce(sum(case when ${referrals.status} = 'paid' and ${referrals.qualifyingAt} <= now() then ${referrals.rewardAmount}::numeric else 0 end), 0)`,
-    })
-    .from(referrals)
-    .where(eq(referrals.referrerUserId, userId))
-
-  const [payoutAgg] = await db
-    .select({
-      outstanding: sql<string>`coalesce(sum(case when ${payoutRequests.status} in ('requested','approved','paid') then ${payoutRequests.amount}::numeric else 0 end), 0)`,
-    })
-    .from(payoutRequests)
-    .where(eq(payoutRequests.userId, userId))
-
-  const eligible = Number(counts?.eligible ?? 0)
-  const outstanding = Number(payoutAgg?.outstanding ?? 0)
+  const balances = referralBalances(
+    earnedRows.map((r) => ({ currency: r.currency, lifetime: Number(r.lifetime), eligible: Number(r.eligible) })),
+    claimedRows.map((r) => ({ currency: r.currency, outstanding: Number(r.outstanding), pending: Number(r.pending) })),
+  )
+  // Nothing earned yet: an empty balance in the programme currency, guarded so
+  // an old client's unguarded Intl formatter can never be handed a bad code.
+  let primary = balances[0]
+  if (!primary) {
+    const settings = await getReferralSettings()
+    const currency = isCurrencyCode(settings.rewardCurrency) ? normalizeCurrencyCode(settings.rewardCurrency) : "USD"
+    primary = { currency, lifetimeEarned: 0, eligibleEarned: 0, outstanding: 0, pending: 0, available: 0 }
+  }
   return {
-    signups: Number(counts?.signups ?? 0),
-    paid: Number(counts?.paid ?? 0),
-    lifetimeEarned: Number(counts?.lifetime ?? 0),
-    eligibleEarned: eligible,
-    outstanding,
-    available: Math.max(0, Math.round((eligible - outstanding) * 100) / 100),
-    currency: settings.rewardCurrency,
+    signups: earnedRows.reduce((n, r) => n + Number(r.signups), 0),
+    paid: earnedRows.reduce((n, r) => n + Number(r.paid), 0),
+    balances,
+    ...primary,
   }
 }

@@ -1,12 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, eq, isNull, max, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { organizations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { logAudit } from "../_lib/audit.js"
+import { pickAppearance } from "../_lib/account-appearance.js"
 import { checkSpaceQuota } from "../_lib/quota.js"
+import { clientUpdateRefusal } from "../_lib/client-capabilities.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../_lib/spaces.js"
+import { moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../src/lib/money.js"
 
 // Spaces = personal savings buckets (wealth_accounts rows with type='space').
 // Money only ever TRANSFERS in/out (kind='transfer'); you can never spend FROM a
@@ -44,15 +47,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const body = req.body as {
       name?: string
+      currency_code?: string
       goal_amount?: number | string | null
       target_date?: string | null
       icon?: string
+      color?: unknown
+      color_style?: unknown
     }
     const name = (body.name ?? "").trim()
     if (!name) return res.status(400).json({ error: "name is required" })
+    const [org] = await db.select({ currency: organizations.currency, reportingCurrency: organizations.reportingCurrency }).from(organizations).where(eq(organizations.id, orgId)).limit(1)
+    if (!org) return res.status(404).json({ error: "Organization not found" })
+    let currencyCode: string
+    try {
+      currencyCode = normalizeCurrencyCode(body.currency_code ?? org.reportingCurrency ?? org.currency)
+    } catch {
+      return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    }
+    // A new Space is new money: a currency whose decimals the columns keep, or
+    // the workspace's own (MC-031).
+    if (!selectableCurrencyCode(currencyCode, org.reportingCurrency ?? org.currency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    // A pre-multi-currency build would show a foreign Space wrong (MC-034).
+    const outdated = clientUpdateRefusal(req, currencyCode, org.reportingCurrency ?? org.currency)
+    if (outdated) return res.status(409).json(outdated)
+    const appearance = pickAppearance(body)
+    if (!appearance.ok) return res.status(400).json({ error: appearance.error })
 
     const goalAmount = parseGoal(body.goal_amount)
     if (goalAmount === "invalid") return res.status(400).json({ error: "goal_amount is invalid" })
+    // The goal as typed, to the Space currency's decimals (none for ¥).
+    const badGoal = moneyRefusal(currencyCode, body.goal_amount)
+    if (badGoal) return res.status(400).json(badGoal)
     const targetDate = parseTargetDate(body.target_date)
     if (targetDate === "invalid") return res.status(400).json({ error: "target_date must be YYYY-MM-DD" })
 
@@ -73,9 +98,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: "space",
         bankName: "",
         nickname: name,
+        currencyCode,
         openingBalance: "0", // a Space starts empty; you fund it via transfer
         currentBalance: "0",
         icon: body.icon || "piggy",
+        ...appearance.patch,
         goalAmount,
         targetDate,
         position: (maxPos ?? -1) + 1,

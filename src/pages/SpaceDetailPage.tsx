@@ -4,36 +4,51 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, CalendarClock, Pencil, Repeat, Trash2 } from "lucide-react"
-import { apiDelete, apiErrorMessage, apiGet, apiPost, apiPut } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPut } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
+import { isLiabilityType } from "@/lib/credit-card"
 import type { Transaction, WealthAccount } from "@/lib/types"
-import { formatMoney } from "@/lib/wealth"
+import { accountCurrency, formatMoney } from "@/lib/wealth"
+import { getCurrencySymbol } from "@/lib/currencies"
 import { autoSavePace, spaceGoalStatus, spaceProgress, suggestedMonthly } from "@/lib/spaces"
+import { accountAppearance } from "@/lib/account-color"
+import { cn } from "@/lib/utils"
 import { spaceIconFor } from "@/components/wealth/space-icons"
+import "@/components/wealth/account-color.css"
 import { SpaceTransferModal } from "@/components/spaces/SpaceTransferModal"
 import { SpaceFormModal } from "@/components/spaces/SpaceFormModal"
+import { DeleteSpaceDialog } from "@/components/spaces/DeleteSpaceDialog"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { appLocale } from "@/lib/format-date"
+import { useApiQuery } from "@/hooks/use-api-query"
+import { ruleErrorText } from "@/components/recurring/rule-error"
+import { amountInputProps } from "@/lib/money"
+import { apiErrorCode } from "@/lib/api-error-codes"
 
 type AutoSave = {
   id: string
   wealth_account_id: string
   amount: number | string
+  currency_code?: string | null
   frequency_unit: "day" | "week" | "month" | "year"
   frequency_interval: number
   start_date: string
   end_date: string | null
   next_due_at: string
   active: boolean
+  /** In the rule's (source's) currency. */
   monthly_equivalent: number
+  /** Why the latest occurrence couldn't post (a refusal body), or "". */
+  last_error?: string | null
 }
 
 const todayIso = () => new Date().toISOString().split("T")[0]
@@ -42,6 +57,9 @@ const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(appL
 export function SpaceDetailPage() {
   const { id = "" } = useParams()
   const { t } = useTranslation("spaces")
+  // The generic "recurring payment failed" text, for a paused auto-save whose
+  // stored error has no code of its own (it lives in the root namespace).
+  const ruleFailedText = t("apiErrors.recurring_failed", { ns: "translation" })
   const { getToken } = useAuth()
   const { activeOrg } = useOrg()
   const { currency } = useCurrency()
@@ -88,7 +106,11 @@ export function SpaceDetailPage() {
   const progress = space ? spaceProgress(balance, space.goal_amount) : null
   const status = space ? spaceGoalStatus(balance, space.goal_amount, space.target_date, todayIso()) : null
   const suggested = space ? suggestedMonthly(balance, space.goal_amount, space.target_date, todayIso()) : null
-  const pace = useMemo(() => (autoSave ? autoSavePace(autoSave.monthly_equivalent, suggested) : null), [autoSave, suggested])
+  // The pace compares the rule's monthly figure with a suggestion in the
+  // Space's currency, so it is only said when the two are the same money: a
+  // rule converted at each date's rate (MC-159) has no exact monthly figure.
+  const sameCurrencyRule = !autoSave?.currency_code || !space || autoSave.currency_code === accountCurrency(space, currency)
+  const pace = useMemo(() => (autoSave && sameCurrencyRule ? autoSavePace(autoSave.monthly_equivalent, suggested) : null), [autoSave, sameCurrencyRule, suggested])
 
   async function stopAutoSave() {
     try {
@@ -97,8 +119,8 @@ export function SpaceDetailPage() {
       await apiDelete(`/api/spaces/${id}/auto-save`, token)
       setAutoSave(null)
       toast.success(t("autoSaveStopped"))
-    } catch {
-      toast.error(t("saveFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("saveFailed")))
     }
   }
 
@@ -113,23 +135,41 @@ export function SpaceDetailPage() {
   }
 
   const Icon = spaceIconFor(space.icon)
+  // Every figure here — balance, goal, suggestion, auto-save — is in the
+  // Space's OWN currency; the workspace's is only the legacy fallback (MC-017).
+  const spaceCur = accountCurrency(space, currency)
+  const look = accountAppearance(space)
+  const ink = look.text === "light" ? "text-white" : "text-slate-900"
   const accountName = (accId: string) => { const a = accounts.find((x) => x.id === accId); return a ? (a.nickname?.trim() || a.bank_name) : "—" }
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-3 sm:space-y-5 sm:p-6">
       <Button variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 text-muted-foreground" onClick={() => navigate("/spaces")}>
-        <ArrowLeft className="size-4" /> {t("back")}
+        <ArrowLeft className="size-4" /> {t("wealth.back")}
       </Button>
 
       {/* Main card — everything for this Space lives here */}
-      <div className="rounded-2xl border bg-gradient-to-br from-emerald-500/10 to-transparent p-5">
+      <div
+        style={look.vars as React.CSSProperties}
+        className={cn(
+          // The Space wears the colour it was given on /spaces (src/lib
+          // /account-color.ts) instead of the old fixed emerald.
+          "acct-colored relative overflow-hidden rounded-2xl border p-5",
+          look.bold ? "acct-bold" : "acct-subtle acct-rail bg-card",
+        )}
+      >
         <div className="flex items-start gap-3">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <span
+            className={cn(
+              "flex size-12 shrink-0 items-center justify-center rounded-full border",
+              look.bold ? (look.text === "light" ? "acct-icon-bold" : "acct-icon-bold-dark") : "acct-icon",
+            )}
+          >
             <Icon className="size-6" />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold tracking-tight">{space.nickname}</h1>
-            <p className="mt-0.5 text-3xl font-bold tabular-nums">{formatMoney(balance, currency)}</p>
+            <h1 className={cn("truncate text-lg font-semibold tracking-tight", look.bold && ink)}>{space.nickname}</h1>
+            <p className={cn("mt-0.5 text-3xl font-bold tabular-nums", look.bold && ink)}>{formatMoney(balance, spaceCur)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {/* Special "Set up auto-save" affordance — the standout action on this card. */}
@@ -164,10 +204,10 @@ export function SpaceDetailPage() {
               <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${progress.pct}%` }} />
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="tabular-nums text-muted-foreground">{progress.pct}% · {formatMoney(balance, currency)} / {formatMoney(Number(space.goal_amount), currency)}</span>
+              <span className="tabular-nums text-muted-foreground">{progress.pct}% · {formatMoney(balance, spaceCur)} / {formatMoney(Number(space.goal_amount), spaceCur)}</span>
               {status.kind === "reached" && <span className="font-medium text-emerald-600 dark:text-emerald-400">{t("goalReached")}</span>}
               {status.kind === "on_pace" && status.suggestedMonthly > 0 && (
-                <span className="tabular-nums text-muted-foreground">{t("suggestLine", { amount: formatMoney(status.suggestedMonthly, currency), date: space.target_date ? fmtDate(space.target_date) : "" })}</span>
+                <span className="tabular-nums text-muted-foreground">{t("suggestLine", { amount: formatMoney(status.suggestedMonthly, spaceCur), date: space.target_date ? fmtDate(space.target_date) : "" })}</span>
               )}
               {status.kind === "overdue" && <span className="font-medium text-amber-600 dark:text-amber-400">{t("pastTarget")}</span>}
             </div>
@@ -192,12 +232,17 @@ export function SpaceDetailPage() {
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-sm font-medium">
                 <Repeat className="size-4 text-emerald-600 dark:text-emerald-400" />
-                {t("autoSaveOn", { amount: formatMoney(Number(autoSave.amount), currency), freq: freqLabel(t, autoSave.frequency_unit, autoSave.frequency_interval), account: accountName(autoSave.wealth_account_id) })}
+                {t("autoSaveOn", { amount: formatMoney(Number(autoSave.amount), autoSave.currency_code ?? spaceCur), freq: freqLabel(t, autoSave.frequency_unit, autoSave.frequency_interval), account: accountName(autoSave.wealth_account_id) })}
               </p>
               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <CalendarClock className="size-3.5" /> {t("nextOn", { date: fmtDate(autoSave.next_due_at) })}
                 {pace && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${pace === "behind" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"}`}>{t(`pace_${pace}`)}</span>}
               </p>
+              {/* A paused occurrence (no exchange rate for its date, an archived
+                  account, …) says why, in the reader's language. */}
+              {autoSave.last_error && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t("autoSavePaused", { reason: ruleErrorText(autoSave.last_error, ruleFailedText) })}</p>
+              )}
             </div>
             {canWrite && (
               <div className="flex shrink-0 gap-1">
@@ -230,7 +275,7 @@ export function SpaceDetailPage() {
                     </div>
                   </div>
                   <span className={`shrink-0 text-sm font-semibold tabular-nums ${incoming ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                    {incoming ? "+" : "−"}{formatMoney(Number(tx.amount), currency)}
+                    {incoming ? "+" : "−"}{formatMoney(Number(tx.amount), tx.currency_code ?? spaceCur)}
                   </span>
                 </li>
               )
@@ -241,8 +286,8 @@ export function SpaceDetailPage() {
 
       <SpaceFormModal open={editOpen} space={space} onClose={() => setEditOpen(false)} onSaved={(s) => setSpace((p) => ({ ...(p as WealthAccount), ...s }))} />
       <SpaceTransferModal state={transfer} accounts={accounts} currency={currency} onClose={() => setTransfer(null)} onDone={() => { setTransfer(null); void load({ silent: true }) }} />
-      <AutoSaveModal open={autoOpen} spaceId={id} accounts={accounts} currency={currency} existing={autoSave} suggested={suggested} onClose={() => setAutoOpen(false)} onSaved={(rule) => { setAutoOpen(false); setAutoSave(rule); void load({ silent: true }) }} />
-      <DeleteSpaceDialog open={deleteOpen} space={space} balance={balance} accounts={accounts} currency={currency} onClose={() => setDeleteOpen(false)} onDeleted={() => navigate("/spaces")} />
+      <AutoSaveModal open={autoOpen} spaceId={id} spaceCurrency={spaceCur} accounts={accounts} currency={currency} existing={autoSave} suggested={suggested} onClose={() => setAutoOpen(false)} onSaved={(rule) => { setAutoOpen(false); setAutoSave(rule); void load({ silent: true }) }} />
+      <DeleteSpaceDialog space={deleteOpen ? space : null} accounts={accounts} currency={currency} onClose={() => setDeleteOpen(false)} onDeleted={() => navigate("/spaces")} />
     </div>
   )
 }
@@ -255,10 +300,12 @@ function freqLabel(t: (k: string, o?: Record<string, unknown>) => string, unit: 
 }
 
 function AutoSaveModal({
-  open, spaceId, accounts, currency, existing, suggested, onClose, onSaved,
+  open, spaceId, spaceCurrency, accounts: allAccounts, currency, existing, suggested, onClose, onSaved,
 }: {
   open: boolean
   spaceId: string
+  /** The Space's own currency: the rule's amount is in it. */
+  spaceCurrency: string
   accounts: WealthAccount[]
   currency: string
   existing: AutoSave | null
@@ -275,23 +322,35 @@ function AutoSaveModal({
   const [start, setStart] = useState(todayIso())
   const [end, setEnd] = useState("")
   const [busy, setBusy] = useState(false)
+  // Money the user HOLDS only: a credit card would set up a monthly cash
+  // advance into savings (auto-save funds from a bank or cash account). Any
+  // currency (MC-159): the amount is what leaves the source, in ITS currency,
+  // and each occurrence converts it at its own date's rate.
+  const accounts = useMemo(() => allAccounts.filter((a) => !isLiabilityType(a.type)), [allAccounts])
+  const source = accounts.find((a) => a.id === accountId)
+  const sourceCurrency = source ? accountCurrency(source, currency) : spaceCurrency
+  const cross = sourceCurrency !== spaceCurrency
+  const { data: rate, error: rateError } = useApiQuery<{ rate: string; rate_date: string; stale: boolean }>(open && cross ? `/api/fx/rate?from=${sourceCurrency}&to=${spaceCurrency}` : null)
+  const estimate = cross && Number(rate?.rate) > 0 && Number(amount) > 0 ? Number(amount) * Number(rate?.rate) : null
 
   useEffect(() => {
     if (!open) return
     setBusy(false)
     if (existing) {
-      setAccountId(existing.wealth_account_id)
+      setAccountId(accounts.some((a) => a.id === existing.wealth_account_id) ? existing.wealth_account_id : accounts[0]?.id ?? "")
       setAmount(String(existing.amount))
       setUnit(existing.frequency_unit)
       setInterval(String(existing.frequency_interval))
       setStart(existing.start_date)
       setEnd(existing.end_date ?? "")
     } else {
-      setAccountId(accounts[0]?.id ?? "")
+      // The Space's own currency first: the suggestion is in it, and a same-
+      // currency save moves exactly the figure typed.
+      setAccountId((accounts.find((a) => accountCurrency(a, currency) === spaceCurrency) ?? accounts[0])?.id ?? "")
       setAmount(suggested && suggested > 0 ? String(suggested) : "")
       setUnit("month"); setInterval("1"); setStart(todayIso()); setEnd("")
     }
-  }, [open, existing, accounts, suggested])
+  }, [open, existing, accounts, suggested, currency, spaceCurrency])
 
   async function submit() {
     if (!accountId) { toast.error(t("pickAccount")); return }
@@ -326,11 +385,17 @@ function AutoSaveModal({
           <div className="space-y-1.5">
             <Label>{t("sourceAccount")}</Label>
             <AccountCombobox accounts={accounts} value={accountId} onChange={setAccountId} currency={currency} />
+            {accounts.length === 0 && <p className="text-xs text-muted-foreground">{t("autoSaveNoSourceAccount")}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="as-amount">{t("amount")}</Label>
-              <Input id="as-amount" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>{getCurrencySymbol(sourceCurrency)}</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput id="as-amount" type="number" min="0" {...amountInputProps(sourceCurrency)} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </InputGroup>
             </div>
             <div className="space-y-1.5">
               <Label>{t("frequency")}</Label>
@@ -345,6 +410,18 @@ function AutoSaveModal({
               </Select>
             </div>
           </div>
+          {cross && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {/* A carried-forward rate is dated, never passed off as today's;
+                  "no rate" only when the server says so — a 429 or a 500
+                  says nothing about the pair. */}
+              {estimate !== null
+                ? rate?.stale
+                  ? t("autoSaveEstimateStale", { amount: formatMoney(estimate, spaceCurrency), date: fmtDate(rate.rate_date) })
+                  : t("autoSaveEstimate", { amount: formatMoney(estimate, spaceCurrency) })
+                : apiErrorCode(rateError) === "no_rate" ? t("autoSaveNoRate", { from: sourceCurrency, to: spaceCurrency }) : null}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="as-interval">{t("every")}</Label>
@@ -364,75 +441,6 @@ function AutoSaveModal({
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
           <Button onClick={submit} disabled={busy || accounts.length === 0}>{busy ? t("saving") : t("save")}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function DeleteSpaceDialog({
-  open, space, balance, accounts, currency, onClose, onDeleted,
-}: {
-  open: boolean
-  space: WealthAccount
-  balance: number
-  accounts: WealthAccount[]
-  currency: string
-  onClose: () => void
-  onDeleted: () => void
-}) {
-  const { t } = useTranslation("spaces")
-  const { getToken } = useAuth()
-  const [destId, setDestId] = useState("")
-  const [busy, setBusy] = useState(false)
-  const hasMoney = balance > 0
-
-  useEffect(() => {
-    if (open) setDestId(accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? "")
-  }, [open, accounts])
-
-  async function confirm() {
-    setBusy(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("auth")
-      if (hasMoney) {
-        // Move the remaining balance out (to the chosen / default account) first,
-        // then the empty Space can be deleted.
-        const dest = destId || accounts.find((a) => a.is_default)?.id || accounts[0]?.id
-        if (!dest) { toast.error(t("noSpendable")); setBusy(false); return }
-        await apiPost("/api/wealth/transfer", token, { from_account_id: space.id, to_account_id: dest, amount: balance })
-      }
-      await apiDelete(`/api/spaces/${space.id}`, token)
-      toast.success(t("deleted"))
-      onDeleted()
-    } catch (err) {
-      toast.error(apiErrorMessage(err, t("deleteFailed")))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="w-[92vw] max-w-sm">
-        <DialogHeader><DialogTitle>{t("deleteTitle")}</DialogTitle></DialogHeader>
-        {hasMoney ? (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t("deleteWithMoney", { amount: formatMoney(balance, currency) })}</p>
-            <div className="space-y-1.5">
-              <Label>{t("moveTo")}</Label>
-              <AccountCombobox accounts={accounts} value={destId} onChange={setDestId} currency={currency} />
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("deleteBody", { name: space.nickname })}</p>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
-          <Button variant="destructive" onClick={confirm} disabled={busy || (hasMoney && accounts.length === 0)}>
-            {busy ? t("saving") : hasMoney ? t("moveAndClose") : t("delete")}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

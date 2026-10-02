@@ -2,11 +2,12 @@ import { useTranslation } from "react-i18next"
 import { Zap } from "lucide-react"
 import type { CardWizardModeProps } from "./step-types"
 import type { CardFormState } from "@/lib/card-form"
-import type { CardWizardField } from "@/lib/card-wizard"
+import { accountCurrencyIn, autopayCurrencyMismatch, type CardWizardField } from "@/lib/card-wizard"
 import type { Card, WealthAccount as Account } from "@/lib/types"
 import { isLiabilityType } from "@/lib/credit-card"
 import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { StepHeading } from "./StepHeading"
@@ -30,8 +31,13 @@ const CREDIT_FIELDS: (keyof CardFormState & CardWizardField)[] = [
  * another credit card (a balance transfer — the debt moves, it is not cleared).
  *
  * Autopay is OFF by default and only ever mirrors a payment the bank really
- * makes, so it needs an account that HOLDS money: choosing a credit card
- * disables the switch rather than hiding it, and says why.
+ * makes, so it needs an account that HOLDS money, in the CARD'S currency:
+ * choosing a credit card or an account in another currency disables the switch
+ * rather than hiding it, and says why.
+ *
+ * The card's currency comes first: the limit, the debt and the statement are
+ * amounts in it (their inputs show its symbol). It defaults to the issuing
+ * bank's and can only be corrected while the card has no history.
  */
 export function StepCredit({
   form,
@@ -43,6 +49,8 @@ export function StepCredit({
   ownAccountId,
   ownCardId,
   currency,
+  cardCurrency,
+  currencyLocked,
   balancesVisible,
   errors,
 }: CardWizardModeProps & {
@@ -53,7 +61,12 @@ export function StepCredit({
   /** Edit mode: this card's own liability account and id, which can never pay it. */
   ownAccountId?: string | null
   ownCardId?: string | null
+  /** The workspace reporting currency (fallback for accounts without one). */
   currency: string
+  /** The card's own currency (cardWizardCurrency). */
+  cardCurrency: string
+  /** Edit mode: the card has history, so its currency is fixed. */
+  currencyLocked: boolean
   balancesVisible: boolean
   errors: Partial<Record<CardWizardField, string>>
 }) {
@@ -69,11 +82,35 @@ export function StepCredit({
   const usable = cards.filter((c) => c.status === "active" && !c.account_archived_at && c.id !== ownCardId && c.account_id !== ownAccountId)
   const fundingAccount = accounts.find((a) => a.id === form.funding_account_id)
   const fundsFromCard = !!fundingAccount && isLiabilityType(fundingAccount.type)
-  const autopayOn = hasFunding && !fundsFromCard && form.autopay
+  const fundingCurrency = accountCurrencyIn(accounts, form.funding_account_id, currency)
+  const otherCurrency = autopayCurrencyMismatch(fundingCurrency, cardCurrency)
+  const autopayOn = hasFunding && !fundsFromCard && !otherCurrency && form.autopay
 
   return (
     <div className="space-y-5">
       <StepHeading id="card-credit-heading" title={t("cardWizard.credit.title")} help={mode === "edit" ? t("cardWizard.credit.editHint") : t("cardWizard.credit.help")} />
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium" id="card-currency-label">{t("cardWizard.credit.currency")}</p>
+        <div data-card-currency role="group" aria-labelledby="card-currency-label">
+          <CurrencyCombobox
+            value={cardCurrency}
+            disabled={currencyLocked}
+            onValueChange={(v) =>
+              onChange({
+                currency_code: v,
+                // A payer in another currency can't autopay this card.
+                ...(autopayCurrencyMismatch(fundingCurrency, v) ? { autopay: false } : {}),
+              })
+            }
+          />
+        </div>
+        {errors.currency_code ? (
+          <p role="alert" className="text-xs text-destructive">{errors.currency_code}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">{currencyLocked ? t("cardWizard.credit.currencyLocked") : t("cardWizard.credit.currencyHelp")}</p>
+        )}
+      </div>
 
       <CreditCardFormFields
         form={form.credit}
@@ -96,8 +133,10 @@ export function StepCredit({
             onChange({
               funding_account_id: picked ? picked.account_id : id,
               funding_card_id: picked?.card_id ?? "",
-              // Losing the payer, or handing it to a card, stops autopay.
-              ...(!(picked ? picked.account_id : id) ? { autopay: false } : {}),
+              // Losing the payer, or one in another currency, stops autopay.
+              ...(!(picked ? picked.account_id : id) || autopayCurrencyMismatch(accountCurrencyIn(accounts, picked ? picked.account_id : id, currency), cardCurrency)
+                ? { autopay: false }
+                : {}),
             })
           }
           currency={currency}
@@ -118,14 +157,20 @@ export function StepCredit({
               {t("cardWizard.credit.autopay")}
             </Label>
             <p className="mt-1 text-xs text-muted-foreground" id="card-autopay-help">
-              {fundsFromCard ? t("cardWizard.credit.autopayManualOnly") : hasFunding ? t("cardWizard.credit.autopayHelp") : t("cardWizard.credit.autopayNeedsBank")}
+              {fundsFromCard
+                ? t("cardWizard.credit.autopayManualOnly")
+                : otherCurrency
+                  ? t("cardWizard.credit.autopayCurrencyMismatch", { currency: cardCurrency })
+                  : hasFunding
+                    ? t("cardWizard.credit.autopayHelp")
+                    : t("cardWizard.credit.autopayNeedsBank")}
             </p>
           </div>
           <span className="flex min-h-11 min-w-11 shrink-0 items-center justify-center">
             <Switch
               id="card-autopay"
               checked={autopayOn}
-              disabled={!hasFunding || fundsFromCard}
+              disabled={!hasFunding || fundsFromCard || otherCurrency}
               aria-describedby="card-autopay-help"
               onCheckedChange={(v) => onChange({ autopay: v })}
             />

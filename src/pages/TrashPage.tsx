@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import type { Client, Quotation, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -14,6 +14,9 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Trash2, RotateCcw, Building2, Mail, FileText, ArrowUpRight, ArrowDownRight, ArrowLeftRight } from "lucide-react"
 import { appLocale } from "@/lib/format-date"
+import { formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
+import { rowCurrency } from "@/lib/reporting-fields"
 
 type TrashItemType = "client" | "quotation" | "transaction"
 
@@ -35,8 +38,6 @@ export function TrashPage() {
 
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
-  const fmtAmount = (n: number) =>
-    new Intl.NumberFormat(undefined, { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
   const [clients, setClients] = useState<Client[]>([])
   const [quotations, setQuotations] = useState<Quotation[]>([])
@@ -73,8 +74,8 @@ export function TrashPage() {
       toast.success(t(`${type}Restored`))
       loadData()
       if (type === "client") navigate(`/clients/${id}`)
-    } catch {
-      toast.error(t("restoreFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("restoreFailed")))
     } finally {
       setWorking(false)
     }
@@ -86,17 +87,14 @@ export function TrashPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const res = await fetch("/api/trash/purge", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type: purgeTarget.type, id: purgeTarget.id }),
-      })
-      if (!res.ok) throw new Error()
+      // Through the API client: it sends the active org and drops the cached
+      // reads a purge makes stale; a refusal (transfer_not_trashed) is translated.
+      await apiDelete("/api/trash/purge", token, { type: purgeTarget.type, id: purgeTarget.id })
       toast.success(t("deletedForever"))
       setPurgeTarget(null)
       loadData()
-    } catch {
-      toast.error(t("deleteFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("deleteFailed")))
     } finally {
       setWorking(false)
     }
@@ -107,32 +105,38 @@ export function TrashPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost("/api/trash/clear", token, {})
-      toast.success(t("trashCleared"))
+      const res = await apiPost<{ kept?: { transactions?: number } }>("/api/trash/clear", token, {})
+      // An Opening Balance / Balance Adjustment on a live account stays in Trash
+      // (MC-054) — say so, or the "cleared" Trash reloads with rows still in it.
+      const kept = res?.kept?.transactions ?? 0
+      toast.success(kept > 0 ? t("trashClearedKept", { count: kept }) : t("trashCleared"))
       setClearOpen(false)
       loadData()
-    } catch {
-      toast.error(t("clearFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("clearFailed")))
     } finally {
       setWorking(false)
     }
   }
 
-  const ItemActions = ({ type, id, name }: PurgeTarget) => (
+  const ItemActions = ({ type, id, name, purgeable = true }: PurgeTarget & { purgeable?: boolean }) => (
     <div className="flex gap-2 shrink-0">
-      <Button size="sm" variant="outline" disabled={working} onClick={() => handleRestore(type, id)}>
+      <Button size="sm" variant="outline" className="max-sm:h-11" disabled={working} onClick={() => handleRestore(type, id)}>
         <RotateCcw className="size-3.5" />
         {t("restore")}
       </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="text-muted-foreground hover:text-destructive"
-        disabled={working}
-        onClick={() => setPurgeTarget({ type, id, name })}
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
+      {purgeable && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-muted-foreground hover:text-destructive max-sm:size-11"
+          aria-label={t("deleteForever")}
+          disabled={working}
+          onClick={() => setPurgeTarget({ type, id, name })}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      )}
     </div>
   )
 
@@ -177,7 +181,7 @@ export function TrashPage() {
 
   const TransactionRow = ({ tx }: { tx: Transaction }) => {
     const incoming = tx.type === "incoming"
-    const title = tx.description?.trim() || (incoming ? t("income") : t("expense"))
+    const title = ledgerDescription(tx, t).trim() || (incoming ? t("income") : t("expense"))
     const sub = [!isPersonal ? tx.client_name : null, tx.category?.trim() || null].filter(Boolean).join(" · ")
     return (
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
@@ -191,9 +195,10 @@ export function TrashPage() {
           </p>
         </div>
         <p className={`text-sm font-semibold tabular-nums shrink-0 ${incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-          {incoming ? "+" : "−"}{fmtAmount(Number(tx.amount))}
+          {incoming ? "+" : "−"}{formatMoney(Number(tx.amount), rowCurrency(tx, currency))}
         </p>
-        <ItemActions type="transaction" id={tx.id} name={title} />
+        {/* A system row on a live account explains its balance: restore only (purge refuses it, system_row). */}
+        <ItemActions type="transaction" id={tx.id} name={title} purgeable={!(tx.is_system && tx.wealth_account_id)} />
       </div>
     )
   }
@@ -212,6 +217,11 @@ export function TrashPage() {
   const totalCount = isPersonal
     ? transactions.length
     : clients.length + quotations.length + transactions.length
+  // What "Empty trash" actually deletes: clear.ts keeps system rows on a live
+  // account (same rule as the row's purgeable flag), so the button and its
+  // "will be permanently deleted" count must not promise them.
+  const keptTx = transactions.filter((tx) => tx.is_system && tx.wealth_account_id).length
+  const clearableCount = totalCount - keptTx
 
   return (
     <div className="p-3 sm:p-6 space-y-6">
@@ -222,7 +232,7 @@ export function TrashPage() {
             <p className="text-sm text-muted-foreground mt-1">{t("itemsInTrash", { count: totalCount })}</p>
           )}
         </div>
-        {!loading && totalCount > 0 && (
+        {!loading && clearableCount > 0 && (
           <Button
             variant="outline"
             className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -302,7 +312,7 @@ export function TrashPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("clearTrashTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("clearTrashDesc", { count: totalCount })}</AlertDialogDescription>
+            <AlertDialogDescription>{t("clearTrashDesc", { count: clearableCount })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>

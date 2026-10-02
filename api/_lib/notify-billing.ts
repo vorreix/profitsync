@@ -8,6 +8,7 @@
 //
 // NOTE: relative imports MUST keep the `.js` extension — these modules run as
 // unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
+import { minorUnits } from "../../src/lib/currencies.js"
 import { notifyOrgMembers } from "./notifications.js"
 
 // Reconcile replays the FULL payment history; only a recent payment is news.
@@ -28,7 +29,7 @@ export async function notifyPaymentSucceeded(organizationId: string, evt: Paymen
     if (!evt.paymentId) return
     const paidAt = evt.paidAt ? evt.paidAt.getTime() : 0
     if (!paidAt || Date.now() - paidAt > PAYMENT_NOTIFY_WINDOW_MS) return
-    const amount = `${evt.amount.toFixed(2)} ${evt.currency}`
+    const amount = `${evt.amount.toFixed(minorUnits(evt.currency))} ${evt.currency}`
     await notifyOrgMembers(
       organizationId,
       {

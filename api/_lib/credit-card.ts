@@ -123,21 +123,41 @@ export async function ensureStatements(account: AccountRow, today = todayIso()):
   return filed
 }
 
-/** Card payments (incoming TRANSFER legs, live) dated strictly after `date`. */
+/**
+ * What one live TRANSFER leg `t` on a card adds to "paid since the close" — the
+ * ONE definition, shared by paymentsAfter and the whole-org statement read in
+ * api/_lib/alerts.ts so the two can never drift. The caller filters to the
+ * card, `t.kind = 'transfer'`, `t.deleted_at is null` and the date window.
+ *
+ * NET OF REVERSALS (MC-027). reverseTransfer never touches the legs it undoes:
+ * it records a second transfer the other way. A reversed €500 payment is
+ * therefore a €500 incoming leg AND a €500 outgoing reversal leg on the card,
+ * and counting only the first called the statement paid — silencing the
+ * due-soon and overdue alerts — while the card owed the €500 again. The
+ * reversal is netted on the ORIGINAL leg, never on the reversal leg: an
+ * incoming leg counts only when its transfer is not itself a reversal and has
+ * no live reversal, and every reversal leg counts 0. Subtracting the reversal
+ * leg instead took it off whichever window the REVERSAL was dated in — a
+ * payment made before the close (already inside the snapshot balance) and
+ * reversed after it would cancel a real post-close payment, read the paid
+ * statement as owed, and let autopay pay it twice. That reversal is new debt
+ * for the next cycle, exactly like a purchase. Reversal-linked transfers are
+ * immutable (set_transfer_trashed refuses them), so the `deleted_at` guard is
+ * belt and braces.
+ */
+export const PAID_LEG_SQL = sql`case
+  when t.type = 'incoming' and not exists (select 1 from transfers x where x.id = t.transfer_id and (x.reverses_transfer_id is not null or exists (select 1 from transfers r where r.reverses_transfer_id = x.id and r.deleted_at is null))) then t.amount::numeric
+  else 0 end`
+
+/** Card payments (live incoming TRANSFER legs, net of reversals — PAID_LEG_SQL) dated strictly after `date`. */
 export async function paymentsAfter(accountId: string, date: string): Promise<number> {
-  const [row] = await db
-    .select({ paid: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)` })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.wealthAccountId, accountId),
-        eq(transactions.kind, "transfer"),
-        eq(transactions.type, "incoming"),
-        isNull(transactions.deletedAt),
-        gt(transactions.date, date),
-      ),
-    )
-  return num(row?.paid)
+  const { rows } = (await db.execute(sql`
+    select coalesce(sum(${PAID_LEG_SQL}), 0) as paid
+    from transactions t
+    where t.wealth_account_id = ${accountId} and t.kind = 'transfer'
+      and t.deleted_at is null and t.date > ${date}
+  `)) as unknown as { rows: { paid: string }[] }
+  return num(rows[0]?.paid)
 }
 
 export type StatementSummary = StatementView & {
@@ -148,6 +168,8 @@ export type StatementSummary = StatementView & {
   source: string
   // Autopay bookkeeping (null until autopay looks at the statement).
   autopay_status: "paid" | "skipped" | "failed" | null
+  /** Why autopay did not pay; with a NULL status the attempt was deferred (src/lib/cards.ts autopayDeferred). */
+  autopay_error: string | null
   autopay_group_id: string | null
   autopay_at: string | null
 }
@@ -176,6 +198,7 @@ function summarizeStatement(row: StatementRow, payments: number, today: string):
     due_date: row.dueDate,
     source: row.source,
     autopay_status: (row.autopayStatus as StatementSummary["autopay_status"]) ?? null,
+    autopay_error: row.autopayError ?? null,
     autopay_group_id: row.autopayGroupId ?? null,
     autopay_at: row.autopayAt ? row.autopayAt.toISOString() : null,
   }

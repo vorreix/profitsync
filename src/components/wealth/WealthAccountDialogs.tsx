@@ -2,20 +2,23 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiPatch } from "@/lib/api"
+import { apiErrorMessage, apiPatch } from "@/lib/api"
+import { ACCOUNT_CURRENCY_LOCK_KEYS } from "@/lib/api-error-codes"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
-import { currencySymbol } from "@/lib/wealth"
+import { accountCurrency, currencySymbol } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { IconSelect } from "@/components/wealth/icon-select"
+import { AccountAppearanceFields } from "@/components/wealth/AccountAppearanceFields"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
-import { type BankFormState, bankDetailsPayload, bankFormFromAccount, emptyBankForm } from "@/lib/bank-form"
+import { type BankFormState, appearancePayload, bankDetailsPayload, bankFormFromAccount, emptyBankForm } from "@/lib/bank-form"
 import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
 import { type CardFormState, cardEditPayload, cardFormFromAccount, emptyCardForm } from "@/lib/card-form"
 import { cardDebt, isLiabilityType, isValidDayOfMonth } from "@/lib/credit-card"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 
 // Re-exported for back-compat (was defined here originally).
 export { IconSelect } from "@/components/wealth/icon-select"
@@ -50,8 +53,16 @@ export function WealthAccountDialogs({
   const [editForm, setEditForm] = useState<EditForm>(emptyBankForm)
   const [cardForm, setCardForm] = useState<CardFormState>(emptyCardForm)
   const [adjustBalance, setAdjustBalance] = useState("")
-  const symbol = currencySymbol(currency)
+  const [editCurrency, setEditCurrency] = useState(currency)
+  // Symbols follow the ACCOUNT being edited/adjusted, not the workspace: a USD
+  // account's balance is typed in dollars even inside a EUR workspace.
+  const symbol = currencySymbol(accountCurrency(editing, currency))
+  const adjustSymbol = currencySymbol(accountCurrency(adjusting, currency))
   const adjustingCard = !!adjusting && isLiabilityType(adjusting.type)
+  // The picker's hint for a locked currency: the same line per reason
+  // (src/lib/account-currency-lock.ts) that apiErrorMessage gives the 409.
+  const currencyLockMessage = (reason: string | null | undefined, code: string | null | undefined) =>
+    t(ACCOUNT_CURRENCY_LOCK_KEYS[reason ?? "history"] ?? ACCOUNT_CURRENCY_LOCK_KEYS.history, { ns: "translation", currency: code ?? currency })
 
   useEffect(() => {
     if (editing) {
@@ -60,11 +71,12 @@ export function WealthAccountDialogs({
         icon: editing.icon || (editing.type === "cash" ? "wallet" : "bank"),
       }))
       if (isLiabilityType(editing.type)) setCardForm(cardFormFromAccount(editing))
+      setEditCurrency(editing.currency_code ?? currency)
       // Re-arm: the dialogs stay mounted between opens, so a request left in
       // flight when the user closed one must not freeze the button on reopen.
       setSaving(false)
     }
-  }, [editing])
+  }, [editing, currency])
 
   useEffect(() => {
     if (adjusting) {
@@ -84,7 +96,8 @@ export function WealthAccountDialogs({
       onDone()
       onChanged()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("couldNotUpdate"))
+      // account_currency_locked included: apiErrorMessage names its reason.
+      toast.error(apiErrorMessage(err, t("couldNotUpdate")))
     } finally {
       setSaving(false)
     }
@@ -116,6 +129,11 @@ export function WealthAccountDialogs({
       bankName: editForm.bank_name.trim(),
       nickname: editForm.nickname.trim(),
       icon: editForm.icon,
+      // Only a real change is sent: echoing the current code is a no-op at best,
+      // and on a legacy account with no stored code it reads as a change the
+      // lock refuses — every rename would fail.
+      ...(editCurrency !== (editing.currency_code ?? currency) ? { currency_code: editCurrency } : {}),
+      ...appearancePayload(editForm),
     }
     // Banking details only apply to bank accounts.
     if (editing.type === "bank") Object.assign(body, bankDetailsPayload(editForm))
@@ -129,6 +147,18 @@ export function WealthAccountDialogs({
           <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("editAccount")}</DialogTitle></DialogHeader>
           {editing && (
             <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
+              {!isLiabilityType(editing.type) && (
+                <div className="mb-4 space-y-1.5">
+                  <Label>{t("accountCurrency")}</Label>
+                  {/* The server decides (`currency_locked`) with the same predicate
+                      its PATCH refuses with — counting rows here once enabled a
+                      save that could only fail (trashed rows lock it too). */}
+                  <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={!!editing.currency_locked || saving} />
+                  {editing.currency_locked && (
+                    <p className="text-xs text-muted-foreground">{currencyLockMessage(editing.currency_lock_reason, editing.currency_code)}</p>
+                  )}
+                </div>
+              )}
               {editing.type === "cash" ? (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
@@ -139,15 +169,22 @@ export function WealthAccountDialogs({
                     <Label>{t("nickname")}</Label>
                     <Input value={editForm.nickname} placeholder={t("cashInHand")} onChange={(e) => setEditForm((f) => ({ ...f, nickname: e.target.value }))} />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("logoIcon")}</Label>
-                    <IconSelect value={editForm.icon} onChange={(icon) => setEditForm((f) => ({ ...f, icon }))} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>{t("logoIcon")}</Label>
+                      <IconSelect value={editForm.icon} onChange={(icon) => setEditForm((f) => ({ ...f, icon }))} />
+                    </div>
+                    <AccountAppearanceFields
+                      value={{ color: editForm.color, color_style: editForm.color_style }}
+                      onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))}
+                      account={{ id: editing.id, type: "cash" }}
+                    />
                   </div>
                 </div>
               ) : isLiabilityType(editing.type) ? (
                 <CreditCardFormFields form={cardForm} onChange={(patch) => setCardForm((f) => ({ ...f, ...patch }))} mode="edit" symbol={symbol} />
               ) : (
-                <BankAccountFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} />
+                <BankAccountFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} accountId={editing.id} />
               )}
             </div>
           )}
@@ -162,7 +199,7 @@ export function WealthAccountDialogs({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{adjustingCard ? t("amountOwed") : t("adjustBalance")}</DialogTitle></DialogHeader>
           <div className="space-y-2 py-2">
-            <Label htmlFor="adjust-balance">{adjustingCard ? t("amountOwedLabel", { symbol }) : `${t("newBalance")} (${symbol})`}</Label>
+            <Label htmlFor="adjust-balance">{adjustingCard ? t("amountOwedLabel", { symbol: adjustSymbol }) : `${t("newBalance")} (${adjustSymbol})`}</Label>
             <Input id="adjust-balance" type="number" inputMode="decimal" step="0.01" min={adjustingCard ? "0" : undefined} value={adjustBalance} onChange={(e) => setAdjustBalance(e.target.value)} />
             <p className="text-xs text-muted-foreground">{t("adjustHint")}</p>
           </div>

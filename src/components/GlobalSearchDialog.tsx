@@ -34,11 +34,14 @@ import { useOrg } from "@/lib/org-context"
 import { loadRecents, recentSearchScope, recordRecent } from "@/lib/recent-searches"
 import { filterLocal, quickActions, searchablePages } from "@/lib/search-index"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
+import { rowCurrency } from "@/lib/reporting-fields"
 import { cardDisplayName, maskedTail } from "@/lib/cards"
 import { CardSwatch } from "@/components/transactions/CardSwatch"
 import {
   SEARCH_MIN_CHARS,
   searchHrefs,
+  type SearchTransaction,
   searchResultsEmpty,
   useGlobalSearch,
 } from "@/hooks/use-global-search"
@@ -60,6 +63,10 @@ export function GlobalSearchDialog({
   const { activeOrg } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
+  // A hit in its OWN currency (search.ts sends `currency_code`), not the
+  // workspace's: a ₹20,000 opening balance never reads "€20,000" (MC-050).
+  const txMoney = (tx: SearchTransaction & { currency_code?: string | null }) =>
+    formatMoney(Number(tx.amount), rowCurrency(tx, currency))
   const [query, setQuery] = useState("")
 
   const recentsScope = activeOrg ? recentSearchScope(userId, activeOrg.id) : null
@@ -191,13 +198,13 @@ export function GlobalSearchDialog({
                     onSelect={() => go(searchHrefs.transaction(tx))}
                   >
                     <ArrowLeftRight className="text-muted-foreground" />
-                    <span className="truncate">{tx.description || tx.category || tx.client_name}</span>
+                    <span className="truncate">{ledgerDescription(tx, t) || tx.category || tx.client_name}</span>
                     <span
                       className={`ml-auto shrink-0 text-xs tabular-nums ${
                         tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
                       }`}
                     >
-                      {formatMoney(Number(tx.amount), currency)}
+                      {txMoney(tx)}
                     </span>
                   </CommandItem>
                 ))}

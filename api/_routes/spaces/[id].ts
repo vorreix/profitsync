@@ -5,6 +5,7 @@ import { recurringRules, transactions, wealthAccountAttachments, wealthAccounts 
 import { canDelete, canWrite, isPersonalAccount, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { checkSpaceQuota } from "../../_lib/quota.js"
+import { pickAppearance } from "../../_lib/account-appearance.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../../_lib/spaces.js"
 
 // A Space must be EMPTY (balance 0) before it can be archived or deleted —
@@ -49,6 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       icon?: string
       note?: string
       archived?: boolean
+      color?: unknown
+      color_style?: unknown
     }
 
     const set: Record<string, unknown> = { updatedBy: userId, updatedAt: new Date() }
@@ -69,12 +72,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       set.targetDate = target
     }
     if (body.icon !== undefined) set.icon = body.icon || "piggy"
+    const appearance = pickAppearance(body)
+    if (!appearance.ok) return res.status(400).json({ error: appearance.error })
+    Object.assign(set, appearance.patch)
     if (body.note !== undefined) set.note = String(body.note)
 
     // Archive / restore.
     if (body.archived === true && !space.archivedAt) {
       if (!isEmpty(space.currentBalance)) {
-        return res.status(400).json({ error: "Withdraw the remaining balance before closing this Space." })
+        return res.status(400).json({ error: "Withdraw the remaining balance before closing this Space.", code: "space_not_empty" })
       }
       set.archivedAt = new Date()
     } else if (body.archived === false && space.archivedAt) {
@@ -96,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "DELETE") {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     if (!isEmpty(space.currentBalance)) {
-      return res.status(400).json({ error: "Withdraw the remaining balance before deleting this Space." })
+      return res.status(400).json({ error: "Withdraw the remaining balance before deleting this Space.", code: "space_not_empty" })
     }
     // Drop the Space's auto-save rule (kind='transfer' → toAccountId) so it can't
     // keep firing at a deleted/archived destination.

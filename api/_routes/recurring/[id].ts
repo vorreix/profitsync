@@ -4,12 +4,16 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, recurringRules, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { todayIso } from "../../../src/lib/recurring.js"
+import { moneyRefusal } from "../../../src/lib/money.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring-validate.js"
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
 import { attributeCard } from "../../_lib/cards.js"
-import { directionOf, loadDebt } from "../../_lib/debts.js"
+import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
+import { currencyChangeRefusal } from "../../_lib/currency-guards.js"
+import { debtCurrencyOf, directionOf, loadDebt } from "../../_lib/debts.js"
 import { greatestDate, linkRuleToDebt, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
+import { withRuleError } from "../../_lib/client-capabilities.js"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -45,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await materializeDueRecurring(orgId)
     const row = await readRule(orgId, id)
     if (!row) return res.status(404).json({ error: "Not found" })
-    return res.json(serialize(row))
+    return res.json(serialize(withRuleError(req, row)))
   }
 
   const [rule] = await db
@@ -82,7 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Post anything that became due the moment it changed hands.
       if (linked.rule.active) await materializeDueRecurring(orgId)
       const fresh = await readRule(orgId, id)
-      return res.json(serialize(fresh ?? linked.rule))
+      return res.json(serialize(withRuleError(req, fresh ?? linked.rule)))
     }
 
     // Pause / resume is a lightweight toggle that skips full validation.
@@ -110,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (body.active) await materializeDueRecurring(orgId)
       await syncDebt(rule.kind, rule.debtAccountId, id)
       const fresh = await readRule(orgId, id)
-      return res.json(serialize(fresh ?? updated))
+      return res.json(serialize(withRuleError(req, fresh ?? updated)))
     }
 
     const parsed = validateRuleInput({
@@ -151,11 +155,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (!attributed.accountId) return res.status(400).json({ error: "Choose the account this repayment is paid from" })
       const [payer] = await db
-        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.id, attributed.accountId), eq(wealthAccounts.organizationId, orgId)))
       if (!payer || payer.archivedAt || (payer.type !== "bank" && payer.type !== "cash")) {
         return res.status(400).json({ error: "A recurring repayment must come from a bank or cash account" })
+      }
+      if (rule.debtAccountId && payer.currencyCode) {
+        const target = await loadDebt(orgId, rule.debtAccountId)
+        if (target && payer.currencyCode.toUpperCase() !== debtCurrencyOf(target)) {
+          return res.status(400).json({ error: `A repayment for a ${debtCurrencyOf(target)} debt must come from a ${debtCurrencyOf(target)} account`, code: "currency_mismatch", context: "debt", currency: debtCurrencyOf(target) })
+        }
       }
     }
 
@@ -173,6 +183,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const nextDueAt = scheduleChanged || resumingDebt
       ? (parsed.value.startDate > today ? parsed.value.startDate : today)
       : rule.nextDueAt
+    // The rule snapshots its account's currency onto every occurrence, so moving
+    // it to another account has to move the currency with it — otherwise a rule
+    // shifted from a EUR account to a USD one keeps posting "EUR" rows there.
+    // (An archived account answers null; an unchanged rule keeps what it had.)
+    // A rule with NO account keeps the currency it was created in: a later
+    // workspace currency change must not turn ₹50,000 into $50,000 on a rename.
+    // Only a legacy rule with none falls back to the workspace's.
+    const currencyCode = attributed.accountId
+      ? (await currencyForFinancialWrite(orgId, attributed.accountId)) ?? (attributed.accountId === rule.wealthAccountId ? rule.currencyCode : null)
+      : rule.currencyCode ?? (await currencyForFinancialWrite(orgId))
+    if (!currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
+    // A currency change keeps the number and changes what it means (€15 → ₹15
+    // on every future occurrence), so the same request must restate the amount.
+    // `!= null`, not `!== undefined`: validateRuleInput reads `amount ?? rule.amount`,
+    // so a null amount keeps the old number and is no restatement.
+    const currencyRefusal = currencyChangeRefusal(rule.currencyCode, currencyCode, body.amount != null)
+    if (currencyRefusal) return res.status(409).json(currencyRefusal)
+    // As typed, to the currency's decimals — only when restated: the dialog
+    // resends it, and a legacy ¥1,500.50 rule must still take a rename (MC-031).
+    if (body.amount != null && (Number(body.amount) !== Number(rule.amount) || currencyCode !== rule.currencyCode)) {
+      const badAmount = moneyRefusal(currencyCode, body.amount)
+      if (badAmount) return res.status(400).json(badAmount)
+    }
 
     const [updated] = await db
       .update(recurringRules)
@@ -180,6 +213,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: parsed.value.name,
         type: parsed.value.type,
         amount: parsed.value.amount,
+        currencyCode,
         category: parsed.value.category,
         clientId: parsed.value.clientId,
         wealthAccountId: attributed.accountId,
@@ -200,7 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await materializeDueRecurring(orgId)
     await syncDebt(rule.kind, rule.debtAccountId, id)
     const fresh = await readRule(orgId, id)
-    return res.json(serialize(fresh ?? updated))
+    return res.json(serialize(withRuleError(req, fresh ?? updated)))
   }
 
   if (req.method === "DELETE") {

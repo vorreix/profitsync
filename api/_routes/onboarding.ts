@@ -1,11 +1,59 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, eq } from "drizzle-orm"
-import { CURRENCY_LIST } from "../../src/lib/currencies.js"
+import { and, asc, eq, isNull, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { organizations, userProfiles } from "../../src/lib/db/schema.js"
+import { clients, organizations, transactions, userProfiles, wealthAccounts } from "../../src/lib/db/schema.js"
 import { createOrgForUser, ensurePersonalOrg, getUserId } from "../_lib/auth.js"
+import { parseOrgCurrency, setOrgCurrency } from "../_lib/org-currency.js"
+import { DEFAULT_CASH_NAME } from "../_lib/wealth-accounts.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { selectableCurrencyCode } from "../../src/lib/money.js"
 
-const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
+/**
+ * Onboarding asks "what currency?" and then which cash you hold — but Cash in
+ * Hand is provisioned on the first /api/wealth/accounts read, which may have
+ * happened before this choice (an earlier visit, a factory reset) and stamped
+ * the OLD currency on it. Relabel it only while it is untouched: no row, no
+ * rule, nothing in it. Anything with history keeps its label (an account's
+ * currency is locked once money moved — see wealth/accounts/[id].ts).
+ */
+async function relabelUntouchedCash(orgId: string, code: string) {
+  await db
+    .update(wealthAccounts)
+    .set({ currencyCode: code, updatedAt: new Date() })
+    .where(
+      and(
+        eq(wealthAccounts.organizationId, orgId),
+        eq(wealthAccounts.type, "cash"),
+        eq(wealthAccounts.bankName, DEFAULT_CASH_NAME),
+        isNull(wealthAccounts.archivedAt),
+        sql`${wealthAccounts.currencyCode} is distinct from ${code}`,
+        sql`${wealthAccounts.currentBalance} = 0 and ${wealthAccounts.openingBalance} = 0`,
+        sql`not exists (select 1 from transactions t where t.wealth_account_id = ${wealthAccounts.id})`,
+        sql`not exists (select 1 from recurring_rules r where ${wealthAccounts.id} in (r.wealth_account_id, r.to_account_id, r.debt_account_id))`,
+      ),
+    )
+}
+
+/**
+ * Give a workspace that ALREADY exists the chosen currency — only while it holds
+ * no ledger row (trashed included). The picker defaults to the timezone's guess,
+ * and a factory reset of one workspace re-runs onboarding for its owner, whose
+ * choice may then land on their OTHER, live workspace: every member's figures
+ * would switch to that guess. A workspace with history keeps its currency (org
+ * settings change it on purpose). Returns whether it now reports in `code`.
+ */
+async function adoptCurrencyIfEmpty(orgId: string, code: string | undefined, actorId: string): Promise<boolean> {
+  if (!code) return false
+  const [row] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .innerJoin(clients, eq(clients.id, transactions.clientId))
+    .where(eq(clients.organizationId, orgId))
+    .limit(1)
+  if (row) return false
+  await setOrgCurrency(orgId, code, { actorId })
+  return true
+}
 
 function slugify(name: string): string {
   return (
@@ -40,37 +88,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (account_type !== "personal" && account_type !== "business") {
     return res.status(400).json({ error: "account_type must be 'personal' or 'business'" })
   }
-  const resolvedCurrency = currency?.toUpperCase()
-  if (resolvedCurrency !== undefined && !VALID_CURRENCIES.has(resolvedCurrency)) {
-    return res.status(400).json({ error: "Invalid currency code" })
-  }
+  const resolvedCurrency = currency === undefined ? undefined : parseOrgCurrency(currency)
+  if (resolvedCurrency === null) return refuseCurrency(res)
+  // A workspace may only be GIVEN a currency new money can be created in — not
+  // KWD, BHD, … whose third decimal the money columns can't keep (MC-031) —
+  // unless it already reports in it. Refused like POST /api/organizations: an
+  // old build whose picker guessed KWD is told so before anything is written.
+  const unusable = (current?: string | null) => !!resolvedCurrency && !selectableCurrencyCode(resolvedCurrency, current)
 
   let orgId: string
+  let adopted = false // the workspace now reports in resolvedCurrency
 
   if (account_type === "personal") {
     // Ensures account_type=personal + a default client.
     orgId = await ensurePersonalOrg(userId)
-    if (resolvedCurrency) {
-      await db.update(organizations).set({ currency: resolvedCurrency, updatedAt: new Date() }).where(eq(organizations.id, orgId))
-    }
+    if (unusable(await reportingCurrencyFor(orgId))) return refuseCurrency(res)
+    adopted = await adoptCurrencyIfEmpty(orgId, resolvedCurrency, userId)
   } else {
     // Reuse the user's existing business workspace if they have one.
     const [existingBiz] = await db
-      .select({ id: organizations.id, accountType: organizations.accountType })
+      .select({ id: organizations.id, accountType: organizations.accountType, currency: organizations.currency, reportingCurrency: organizations.reportingCurrency })
       .from(organizations)
       .where(and(eq(organizations.ownerUserId, userId), eq(organizations.isPersonal, false)))
       .orderBy(asc(organizations.createdAt))
       .limit(1)
 
     if (existingBiz) {
+      if (unusable(existingBiz.reportingCurrency ?? existingBiz.currency)) return refuseCurrency(res)
       orgId = existingBiz.id
       if (existingBiz.accountType !== "business") {
         await db.update(organizations).set({ accountType: "business", updatedAt: new Date() }).where(eq(organizations.id, orgId))
       }
-      if (resolvedCurrency) {
-        await db.update(organizations).set({ currency: resolvedCurrency, updatedAt: new Date() }).where(eq(organizations.id, orgId))
-      }
+      adopted = await adoptCurrencyIfEmpty(orgId, resolvedCurrency, userId)
     } else {
+      if (unusable()) return refuseCurrency(res)
       const name = company_name?.trim() || "My Company"
       const created = await createOrgForUser({
         userId,
@@ -81,8 +132,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         currency: resolvedCurrency,
       })
       orgId = created.id
+      adopted = !!resolvedCurrency
     }
   }
+
+  if (adopted && resolvedCurrency) await relabelUntouchedCash(orgId, resolvedCurrency)
 
   // Switch active org + mark onboarding complete.
   await db
@@ -95,5 +149,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     .where(eq(userProfiles.id, userId))
 
-  return res.json({ organization_id: orgId, account_type })
+  // The currency the workspace ACTUALLY reports in: one with history keeps its
+  // own whatever was picked (adoptCurrencyIfEmpty), and the money wizard must
+  // label and save every amount in it — a ₹-typed cap stored as € is wrong money.
+  return res.json({ organization_id: orgId, account_type, reporting_currency: await reportingCurrencyFor(orgId) })
+}
+
+function refuseCurrency(res: VercelResponse) {
+  return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 }

@@ -1,0 +1,161 @@
+// The consolidated wealth picture: native totals per currency, each account's
+// approximate value in the reporting currency, assets, liabilities and net
+// worth — with the rate date and an honest `complete` flag. Native balances are
+// never changed by a rate; only the converted column moves.
+//
+// Read-only. The one side effect is filling the FX snapshot table.
+import { and, eq, inArray, isNull, or } from "drizzle-orm"
+import Decimal from "decimal.js"
+import { db } from "../../src/lib/db/index.js"
+import { debtDetails, wealthAccounts } from "../../src/lib/db/schema.js"
+import { cardCredit, cardDebt, isLiabilityType } from "../../src/lib/credit-card.js"
+import { OPEN_LIFECYCLES } from "../../src/lib/debt-status.js"
+import type { WealthSummary, WealthSummaryAccount, WealthSummaryCurrency } from "../../src/lib/types.js"
+import { convertAmount, currentRate, ensureRatesForOrg, reportingCurrencyFor, type RateLookup } from "./fx-rates.js"
+
+const num2 = (d: Decimal) => d.toDecimalPlaces(2).toNumber()
+
+/**
+ * THE current valuation (MC-100): /wealth, net worth and the money-flow root
+ * balance all read it, so the same balance can never be worth two amounts on
+ * two screens. Today's rates come only from currentRate() — never from a SQL
+ * fx_rate_on(current_date), which may pick a different snapshot of the day.
+ *
+ * `known.reporting`: the caller (GET /api/flow) already resolved the reporting
+ * currency AND ran ensureRatesForOrg into it, so neither is repeated here.
+ */
+export async function buildWealthSummary(orgId: string, known?: { reporting: string }): Promise<WealthSummary> {
+  const reporting = known?.reporting ?? (await reportingCurrencyFor(orgId))
+  const rows = await db
+    .select({
+      id: wealthAccounts.id,
+      type: wealthAccounts.type,
+      bankName: wealthAccounts.bankName,
+      nickname: wealthAccounts.nickname,
+      currencyCode: wealthAccounts.currencyCode,
+      currentBalance: wealthAccounts.currentBalance,
+    })
+    .from(wealthAccounts)
+    // A debt counts only while /debts counts it (MC-092): writing one off,
+    // marking it repaid or refinancing it changes its lifecycle, not its
+    // ledger balance, and net worth must drop it on both screens at once.
+    // Accounts with no debt terms (every non-debt account) are unaffected.
+    .leftJoin(debtDetails, eq(debtDetails.wealthAccountId, wealthAccounts.id))
+    .where(
+      and(
+        eq(wealthAccounts.organizationId, orgId),
+        isNull(wealthAccounts.archivedAt),
+        or(isNull(debtDetails.id), inArray(debtDetails.lifecycle, [...OPEN_LIFECYCLES])),
+      ),
+    )
+
+  // Rates: best effort, then one lookup per foreign currency.
+  if (!known) await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+  const currencies = [...new Set(rows.map((r) => (r.currencyCode ?? reporting).toUpperCase()))]
+  const rates = new Map<string, RateLookup | null>()
+  for (const cur of currencies) rates.set(cur, cur === reporting ? { base: cur, quote: reporting, rate: "1", rateDate: new Date().toISOString().slice(0, 10), provider: "identity", stale: false } : await currentRate(cur, reporting).catch(() => null))
+
+  const accounts: WealthSummaryAccount[] = rows.map((r) => {
+    const cur = (r.currencyCode ?? reporting).toUpperCase()
+    const rate = rates.get(cur) ?? null
+    const native = new Decimal(r.currentBalance)
+    return {
+      id: r.id,
+      type: r.type,
+      name: r.nickname.trim() || r.bankName,
+      currency: cur,
+      native_balance: num2(native),
+      converted_balance: rate ? num2(convertAmount(native, rate)) : null,
+      rate: rate?.rate ?? null,
+      rate_date: rate?.rateDate ?? null,
+      stale: rate?.stale ?? false,
+    }
+  })
+
+  // Per-currency native totals, then converted.
+  const byCurrency: WealthSummaryCurrency[] = []
+  let convertedAssets = new Decimal(0)
+  let convertedLiabilities = new Decimal(0)
+  // The same totals, split by what they are: card debt, money borrowed (loans)
+  // and money lent (receivables) are different obligations with different
+  // homes, so a screen must never label one as another. `liabilities` above is
+  // card debt + loans; `assets` includes receivables (owed to you, not liquid).
+  let convertedCardDebt = new Decimal(0)
+  let convertedDebtsOwed = new Decimal(0)
+  let convertedDebtsReceivable = new Decimal(0)
+  const excluded: string[] = []
+  let asOf: string | null = null
+  let stale = false
+  for (const cur of currencies) {
+    let assets = new Decimal(0)
+    let liabilities = new Decimal(0)
+    let cardDebtNative = new Decimal(0)
+    let owedNative = new Decimal(0)
+    let receivableNative = new Decimal(0)
+    for (const r of rows) {
+      if ((r.currencyCode ?? reporting).toUpperCase() !== cur) continue
+      const bal = Number(r.currentBalance)
+      if (isLiabilityType(r.type)) {
+        // Credit cards and loans: a negative balance is owed, a positive one is credit.
+        liabilities = liabilities.plus(cardDebt(bal))
+        assets = assets.plus(cardCredit(bal))
+        if (r.type === "loan") owedNative = owedNative.plus(cardDebt(bal))
+        else cardDebtNative = cardDebtNative.plus(cardDebt(bal))
+      } else {
+        assets = assets.plus(bal)
+        if (r.type === "receivable") receivableNative = receivableNative.plus(Math.max(0, bal))
+      }
+    }
+    const rate = rates.get(cur) ?? null
+    const entry: WealthSummaryCurrency = {
+      currency: cur,
+      assets: num2(assets),
+      liabilities: num2(liabilities),
+      net: num2(assets.minus(liabilities)),
+      converted_assets: rate ? num2(convertAmount(assets, rate)) : null,
+      converted_liabilities: rate ? num2(convertAmount(liabilities, rate)) : null,
+      converted_net: rate ? num2(convertAmount(assets.minus(liabilities), rate)) : null,
+      rate: rate?.rate ?? null,
+      rate_date: rate?.rateDate ?? null,
+      stale: rate?.stale ?? false,
+      share: null,
+      account_count: rows.filter((r) => (r.currencyCode ?? reporting).toUpperCase() === cur).length,
+    }
+    if (rate) {
+      convertedAssets = convertedAssets.plus(convertAmount(assets, rate))
+      convertedLiabilities = convertedLiabilities.plus(convertAmount(liabilities, rate))
+      convertedCardDebt = convertedCardDebt.plus(convertAmount(cardDebtNative, rate))
+      convertedDebtsOwed = convertedDebtsOwed.plus(convertAmount(owedNative, rate))
+      convertedDebtsReceivable = convertedDebtsReceivable.plus(convertAmount(receivableNative, rate))
+      if (cur !== reporting) {
+        if (rate.stale) stale = true
+        if (!asOf || rate.rateDate < asOf) asOf = rate.rateDate
+      }
+    } else {
+      excluded.push(cur)
+    }
+    byCurrency.push(entry)
+  }
+  // Share of converted assets held in each currency (of what could be converted).
+  for (const e of byCurrency) {
+    e.share = e.converted_assets != null && convertedAssets.gt(0) ? Number(new Decimal(e.converted_assets).div(convertedAssets).times(100).toDecimalPlaces(1)) : null
+  }
+  byCurrency.sort((a, b) => (b.converted_assets ?? 0) - (a.converted_assets ?? 0) || a.currency.localeCompare(b.currency))
+
+  return {
+    reporting_currency: reporting,
+    net_worth: num2(convertedAssets.minus(convertedLiabilities)),
+    assets: num2(convertedAssets),
+    liabilities: num2(convertedLiabilities),
+    card_liabilities: num2(convertedCardDebt),
+    debts_owed: num2(convertedDebtsOwed),
+    debts_receivable: num2(convertedDebtsReceivable),
+    complete: excluded.length === 0,
+    excluded_currencies: excluded,
+    as_of: asOf,
+    stale,
+    multi_currency: currencies.some((c) => c !== reporting),
+    by_currency: byCurrency,
+    accounts,
+  }
+}

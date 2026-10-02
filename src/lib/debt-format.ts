@@ -18,6 +18,16 @@ export function formatByCurrency(parts: { currency: string; amount: number }[], 
   return parts.map((p) => formatMoney(p.amount, p.currency, visible)).join(" + ")
 }
 
+/**
+ * One figure of the hub's per-currency rows ("remaining" of `month_by_currency`):
+ * the non-zero currencies side by side, or a zero labelled in `fallbackCurrency`
+ * (the overview's own currency) when there is nothing in any of them.
+ */
+export function formatColumn<K extends string>(rows: ({ currency: string } & Record<K, number>)[], key: K, fallbackCurrency: string, visible = true): string {
+  const parts = rows.filter((r) => r[key] !== 0).map((r) => ({ currency: r.currency, amount: r[key] }))
+  return formatByCurrency(parts, visible) || formatMoney(0, fallbackCurrency, visible)
+}
+
 /** Add `months` to today's date and return a month-year label. */
 export function monthsFromNow(months: number, today: string): string {
   const [y, m] = today.split("-").map(Number)

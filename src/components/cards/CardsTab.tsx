@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from "@dnd-kit/core"
 import { ArrowLeftRight, GripVertical, Plus, RefreshCw } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { cardDisplayName } from "@/lib/cards"
 import type { Card, CardSummary, WealthAccount } from "@/lib/types"
 import { useCards, usableCards } from "@/lib/use-cards"
@@ -328,9 +328,9 @@ export function CardsTab({
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPost("/api/cards/reorder", token, { ids: next })
-    } catch {
+    } catch (err) {
       setOrderIds(previous)
-      toast.error(t("cards.reorderFailed"))
+      toast.error(apiErrorMessage(err, t("cards.reorderFailed")))
     }
   }
 

@@ -3,11 +3,12 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { z } from "zod"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { runOptimistic } from "@/lib/optimistic"
 import { useFieldErrors } from "@/lib/use-field-errors"
 import type { Budget, Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { formatMoneyWhole } from "@/lib/wealth"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
@@ -48,6 +49,8 @@ import {
   ClientCard, ClientListRow, ClientTable,
   type ClientActions, type ClientColumn, type ClientWithStats,
 } from "@/components/clients/client-views"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { clientTotalsCurrency, excludedCountOf } from "@/lib/reporting-fields"
 
 type NewClient = {
   name: string
@@ -83,17 +86,21 @@ export function ClientsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   const { activeOrg } = useOrg()
   const canDelete = canDeleteRole(activeOrg?.role)
   const canWrite = canWriteRole(activeOrg?.role)
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const formatCurrency = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
   const [clients, setClients] = useState<ClientWithStats[]>([])
+  // Per-client totals are converted server-side into the workspace's reporting
+  // currency (each row at its own date) — format them in THAT, and say how
+  // many rows had no rate and were left out.
+  const currency = clientTotalsCurrency(clients[0], orgCurrency)
+  const excludedTotals = clients.reduce((s, c) => s + excludedCountOf(c as { excluded_count?: number }), 0)
+  const formatCurrency = (n: number) => formatMoneyWhole(n, currency)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -286,8 +293,8 @@ export function ClientsPage() {
       if (!token) throw new Error("Not authenticated")
       const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-    } catch {
-      toast.error(t("multiSelect.deleteFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("multiSelect.deleteFailed")))
       fetchPage1() // restore on failure
     } finally {
       setBulkDeleting(false)
@@ -440,6 +447,7 @@ export function ClientsPage() {
         </div>
       ) : (
         <>
+          <FxExcludedNotice count={excludedTotals} />
           {view === "table" ? (
             <ClientTable
               clients={activeClients}
@@ -651,7 +659,7 @@ export function ClientsPage() {
         clientId={budgetClient?.id ?? null}
         label={budgetClient?.name ?? ""}
         current={budgetClient ? budgets.get(budgetClient.id) ?? null : null}
-        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period } : null}
+        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period, currency: defaultBudget.currency } : null}
         onSaved={() => { void loadBudgets() }}
       />
 

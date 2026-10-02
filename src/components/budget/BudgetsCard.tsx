@@ -17,6 +17,8 @@ import {
   DELTA_COLOR,
   authoredRate,
   barPct,
+  budgetCurrency,
+  budgetMoney,
   budgetName,
   customWindowLabel,
   inView,
@@ -25,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
 
 /**
  * The dashboard's budgets card (registry id `budget`, personal workspaces).
@@ -60,7 +63,7 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
   const [view] = useBudgetView(activeOrg?.id)
   const [open, setOpen] = usePersistedOpen(`ps_budget_card_open_${activeOrg?.id ?? ""}`)
   const panelId = useId()
-  const money = (n: number) => formatMoney(n, currency)
+  const fallback = data?.currency || currency
   const go = () => navigate("/budgets")
 
   if (loading) {
@@ -93,15 +96,23 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
   // not part of "this month", and adding it in would silently inflate both the
   // limit and the spend. Top-level budgets never overlap by scope, so the
   // remaining figures add up without double-counting.
+  // And only when they share ONE currency: a budget keeps the one it was
+  // created in, and ₹ plus € is not a total (MC-080) — then there is no
+  // headline and the list below opens instead.
   const summable = lines.filter(({ b }) => b.period !== "once")
-  const totals = summable.reduce((acc, { v }) => ({ spent: acc.spent + v.spent, limit: acc.limit + v.limit }), { spent: 0, limit: 0 })
+  const summableCurrencies = new Set(summable.map(({ b }) => budgetCurrency(b, fallback)))
+  const totals = summable.reduce(
+    (acc, { v }) => ({ spent: acc.spent + v.spent, limit: acc.limit + v.limit, excluded: acc.excluded + v.excluded }),
+    { spent: 0, limit: 0, excluded: 0 },
+  )
 
-  const summary: { label: string; spent: number; limit: number; remaining: number; ratio: number; state: SpendingBudgetState } | null =
-    overallView
-      ? { label: t("budgets.overall"), ...overallView }
-      : summable.length > 0
-        ? { label: t("budgets.yourBudgets"), spent: totals.spent, limit: totals.limit, ...budgetState(totals.spent, totals.limit) }
+  const summary: { label: string; currency: string; spent: number; limit: number; remaining: number; ratio: number; state: SpendingBudgetState; excluded: number } | null =
+    overall && overallView
+      ? { label: t("budgets.overall"), currency: budgetCurrency(overall, fallback), ...overallView }
+      : summable.length > 0 && summableCurrencies.size === 1
+        ? { label: t("budgets.yourBudgets"), currency: [...summableCurrencies][0], spent: totals.spent, limit: totals.limit, excluded: totals.excluded, ...budgetState(totals.spent, totals.limit) }
         : null
+  const money = (n: number) => formatMoney(n, summary?.currency ?? fallback)
 
   const top = [...lines].sort((x, y) => y.v.ratio - x.v.ratio).slice(0, 3)
 
@@ -129,7 +140,11 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
     )
   }
 
-  const foldable = top.length > 0
+  // No headline BECAUSE the budgets are in several currencies → the list IS
+  // the card: held open, with no fold control that would do nothing.
+  const forced = !summary && summableCurrencies.size > 1
+  const foldable = top.length > 0 && !forced
+  const listOpen = open || forced
 
   return (
     <Card className={`py-0 ${className}`}>
@@ -140,7 +155,7 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
           {foldable ? (
             <button
               type="button"
-              aria-expanded={open}
+              aria-expanded={listOpen}
               aria-controls={panelId}
               onClick={() => setOpen(!open)}
               className="pressable -my-1.5 flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pe-1 text-start text-sm font-medium transition-colors hover:text-foreground"
@@ -152,7 +167,7 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
                 {periodLabel(t, view)}
               </span>
               <ChevronDown
-                className={`size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+                className={`size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out motion-reduce:transition-none ${listOpen ? "rotate-180" : ""}`}
                 aria-hidden
               />
             </button>
@@ -202,17 +217,19 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
                 style={{ width: `${barPct(summary.ratio)}%` }}
               />
             </div>
+            {/* Partial spend is never shown as the whole figure (MC-083). */}
+            <FxExcludedNotice count={summary.excluded} className="mt-1.5" />
           </div>
         )}
 
         {/* The 0fr→1fr grid keeps the fold on the compositor instead of
             animating height, and the list's top padding sits INSIDE the
             overflow-hidden so a closed card ends flush with the headline. */}
-        {foldable && (
+        {top.length > 0 && (
           <div
             id={panelId}
             className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
-            style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
+            style={{ gridTemplateRows: listOpen ? "1fr" : "0fr" }}
           >
             <div className="overflow-hidden">
               <ul className={`space-y-2 pt-3 ${summary ? "mt-3 border-t" : ""}`}>
@@ -221,7 +238,8 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
                   const name = budgetName(t, b)
                   // What was actually set — never let a converted figure be the
                   // only number a budget's owner sees.
-                  const authored = b.period === "once" ? customWindowLabel(t, b, i18n.language) : authoredRate(t, b, money)
+                  const own = budgetMoney(b, fallback)
+                  const authored = b.period === "once" ? customWindowLabel(t, b, i18n.language) : authoredRate(t, b, own)
                   return (
                     <li key={b.id} data-budget={b.id} data-budget-state={v.state}>
                       <button
@@ -233,11 +251,12 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
                           <span className="flex min-w-0 items-center gap-1.5">
                             <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                             <span className="truncate font-medium">{name}</span>
+                            <FxExcludedMarker count={v.excluded} />
                           </span>
                           <span className={`shrink-0 font-medium tabular-nums ${DELTA_COLOR[v.state]}`}>
                             {v.remaining >= 0
-                              ? t("budgets.left", { amount: money(v.remaining) })
-                              : t("budgets.over", { amount: money(-v.remaining) })}
+                              ? t("budgets.left", { amount: own(v.remaining) })
+                              : t("budgets.over", { amount: own(-v.remaining) })}
                           </span>
                         </div>
                         <div

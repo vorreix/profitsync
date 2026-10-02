@@ -111,7 +111,10 @@
     "saving": "Speichern...",
     "amountTooLarge": "Betrag ist zu groß",
     "expand": "Ausklappen",
-    "collapse": "Einklappen"
+    "collapse": "Einklappen",
+    "selectCurrency": "Währung auswählen…",
+    "searchCurrency": "Nach Währung, Code oder Land suchen…",
+    "noCurrencyFound": "Keine Währung gefunden."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -293,7 +296,8 @@
     "cashQuestionBusiness": "Wie viel Bargeld hat das Unternehmen zur Hand?",
     "cashHintBusiness": "Das Bargeld deines Unternehmens.",
     "newOrgTitle": "Neues Unternehmen erstellen",
-    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar."
+    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar.",
+    "keptCurrencyNote": "Dieser Arbeitsbereich enthält bereits Buchungen und bleibt daher bei {{currency}}. Gib die Beträge unten in {{currency}} ein."
   },
   "transactions": {
     "add": "Hinzufügen",
@@ -466,7 +470,23 @@
     "cardAutopayBadge": "Autom. Zahlung",
     "nCards_one": "{{count}} Karte",
     "nCards_other": "{{count}} Karten",
-    "editOnItsOwnPage": "Das gehört zu einer einzigen Zahlung — öffne sie dort, wo sie erfasst wurde, um sie zu ändern."
+    "reverseTransfer": "Überweisung rückgängig machen",
+    "reverseTransferTitle": "Diese Überweisung rückgängig machen?",
+    "reverseTransferDesc": "Erstellt eine Gegenüberweisung über dieselben Beträge und erstattet die Gebühr. Das Original bleibt in deinem Verlauf.",
+    "transferReversed": "Überweisung rückgängig gemacht",
+    "transferAlreadyReversed": "Diese Überweisung wurde bereits rückgängig gemacht.",
+    "reverseTransferFailed": "Überweisung konnte nicht rückgängig gemacht werden",
+    "transferTrashed": "Diese Überweisung oder ein Teil davon liegt im Papierkorb oder wurde gelöscht und kann daher nicht rückgängig gemacht werden.",
+    "transferIsReversal": "Das ist bereits eine Rückbuchung und kann nicht rückgängig gemacht werden. Um sie aufzuheben, erfasse eine neue Überweisung.",
+    "transferReversedBadge": "Rückgängig",
+    "reversing": "Wird rückgängig gemacht...",
+    "splitSameCurrency": "Nur in derselben Währung wie {{currency}}",
+    "editOnItsOwnPage": "Das gehört zu einer einzigen Zahlung — öffne sie dort, wo sie erfasst wurde, um sie zu ändern.",
+    "amountReenterCurrency": "Jetzt in {{currency}} – gib den Betrag erneut in {{currency}} ein.",
+    "systemBadge": "Saldobuchung",
+    "systemBadgeHint": "Legt den Kontostand fest – zählt weder als Einnahme noch als Ausgabe",
+    "amountNoRate": "Noch kein Kurs",
+    "convertedSplitHint": "Aufgeteilt auf {{n}} Währungen – Summe zum Kurs am Datum jedes Teils umgerechnet"
   },
   "clients": {
     "pageTitle": "Klienten",
@@ -691,7 +711,9 @@
     "removeLogo": "Entfernen",
     "logoHint": "Wird in der Seitenleiste und in Organisationslisten angezeigt. Ein quadratisches Bild eignet sich am besten.",
     "logoInvalid": "Bild konnte nicht gelesen werden — versuche eine andere Datei",
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "reportingCurrency": "Berichtswährung",
+    "reportingCurrencyHint": "Für Summen über Währungen hinweg. Jedes Konto behält seine eigene Währung."
   },
   "members": {
     "failedToLoadMembers": "Fehler beim Laden der Mitglieder",
@@ -811,7 +833,9 @@
       "exhausted": "Limit erreicht",
       "premiumHint": "Premium lädt jeden Monat {{count}} Credits auf — mit 60-Sekunden-Sprachdiktaten und einem 2-Minuten-Sprachassistenten",
       "usedOneTime": "{{used}} von {{limit}} einmaligen Gratis-Credits verbraucht"
-    }
+    },
+    "chargedInAtCheckout": "Wird an der Kasse in {{currency}} berechnet, umgerechnet aus diesem Preis.",
+    "checkoutFailed": "Die Kasse konnte nicht geöffnet werden. Bitte versuche es erneut."
   },
   "trash": {
     "title": "Papierkorb",
@@ -845,7 +869,9 @@
     "clearTrashDesc_other": "Alle {{count}} Elemente werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
     "clearing": "Wird geleert…",
     "trashCleared": "Papierkorb geleert",
-    "clearFailed": "Papierkorb konnte nicht geleert werden"
+    "clearFailed": "Papierkorb konnte nicht geleert werden",
+    "trashClearedKept_one": "Papierkorb geleert. {{count}} Eintrag, der einen Kontostand festlegt, wurde behalten.",
+    "trashClearedKept_other": "Papierkorb geleert. {{count}} Einträge, die einen Kontostand festlegen, wurden behalten."
   },
   "theme": {
     "toggle": "Design wechseln",
@@ -1023,7 +1049,9 @@
     "deleted_one": "{{count}} Element gelöscht",
     "deleted_other": "{{count}} Elemente gelöscht",
     "deleteFailed": "Fehler beim Löschen der ausgewählten Elemente",
-    "selectHint": "Drücken Sie und halten Sie gedrückt, um auszuwählen"
+    "selectHint": "Drücken Sie und halten Sie gedrückt, um auszuwählen",
+    "keptRows_one": "{{count}} Eintrag wurde behalten. Anfangssalden und Saldoanpassungen änderst du auf der Seite des Kontos, und manche Überweisungseinträge lassen sich nicht einzeln löschen.",
+    "keptRows_other": "{{count}} Einträge wurden behalten. Anfangssalden und Saldoanpassungen änderst du auf der Seite des Kontos, und manche Überweisungseinträge lassen sich nicht einzeln löschen."
   },
   "filters": {
     "filters": "Filter",
@@ -1530,7 +1558,11 @@
         "title": "Wie funktioniert diese Karte?",
         "help": "Das Limit, die Zyklustage und wer die Abrechnung bezahlt.",
         "payManually": "Ich zahle sie selbst",
-        "autopayManualOnly": "Autopay braucht eine Bank oder Bargeld. Eine Karte, die eine andere zahlt, würde jeden Monat Schulden aufbauen — das bleibt manuell."
+        "autopayManualOnly": "Autopay braucht eine Bank oder Bargeld. Eine Karte, die eine andere zahlt, würde jeden Monat Schulden aufbauen — das bleibt manuell.",
+        "currency": "Kartenwährung",
+        "currencyHelp": "Die Währung, in der deine Kartenabrechnung erstellt wird — Limit und Beträge unten gelten in dieser Währung.",
+        "currencyLocked": "Diese Karte hat bereits Buchungen, deshalb kann ihre Währung nicht mehr geändert werden.",
+        "autopayCurrencyMismatch": "Autopay braucht ein Konto in {{currency}}, der Währung der Karte. Wähle eines aus oder bezahle selbst."
       },
       "errors": {
         "bank_required": "Wähle das Bankkonto, zu dem diese Karte gehört",
@@ -1551,7 +1583,10 @@
         "last4_required": "Gib die letzten Ziffern auf der Karte an",
         "last4_range": "Gib die letzten 4 bis 6 Ziffern an",
         "expiry_required": "Gib die Gültigkeit von der Karte an",
-        "holder_required": "Gib den Namen auf der Karte an"
+        "holder_required": "Gib den Namen auf der Karte an",
+        "autopay_currency_mismatch": "Autopay braucht ein zahlendes Konto in der Währung der Karte",
+        "account_currency_locked": "Diese Karte hat bereits Buchungen, deshalb kann ihre Währung nicht geändert werden",
+        "invalid_currency": "Wähle eine gültige Währung"
       },
       "optional": "(optional)",
       "type": {
@@ -1563,7 +1598,78 @@
       }
     },
     "balanceTransferWarning": "Das verschiebt die Schuld auf {{card}}. Insgesamt schuldest du dasselbe — sie ist nicht getilgt.",
-    "movedToOtherCards": "{{amount}} auf andere Karten verschoben"
+    "movedToOtherCards": "{{amount}} auf andere Karten verschoben",
+    "accountCurrency": "Kontowährung",
+    "accountCurrencyLocked": "Dieses Konto hat bereits Buchungen in {{currency}}, daher kann die Währung nicht geändert werden. Lege ein weiteres Konto in der gewünschten Währung an und überweise das Geld.",
+    "transferReceivedAmount": "Erhaltener Betrag ({{currency}})",
+    "transferFeeAmount": "Überweisungsgebühr ({{currency}})",
+    "transferFeeSummary": "Gebühr: {{amount}}",
+    "approxAsOf": "Stand {{date}}",
+    "rateStale": "veraltet",
+    "ratesFrom": "Kurse vom {{date}}",
+    "byCurrency": "Nach Währung",
+    "byCurrencyHint": "Salden in der Kontowährung sind Fakten. Umgerechnete Werte sind Näherungen zum angezeigten Kurs und ändern sich mit ihm.",
+    "currencyNotIncluded": "{{currency}} ist nicht in der Summe enthalten — es liegt noch kein Wechselkurs vor",
+    "noRateYet": "Noch kein Wechselkurs",
+    "excludesCurrencies": "Ohne {{currencies}}",
+    "shareOfAssets": "{{share}} % des Vermögens",
+    "accountCountOne": "1 Konto",
+    "accountCountOther": "{{count}} Konten",
+    "transferWhen": "Wann",
+    "transferNowOption": "Jetzt",
+    "transferScheduleOption": "Planen",
+    "transferScheduleHint": "Geplante Überweisungen bewegen kein Geld, bis du sie als erledigt markierst.",
+    "transferTotalDeducted": "Verlässt {{account}}",
+    "transferReceived": "Kommt an bei {{account}}",
+    "transferScheduled": "Überweisung geplant",
+    "scheduleTransfer": "Überweisung planen",
+    "attachmentsAfterCompletion": "Dateien lassen sich anhängen, sobald die Überweisung als erledigt markiert ist.",
+    "scheduledTransfers": "Geplante Überweisungen",
+    "statusPlanned": "Geplant",
+    "statusPending": "Ausstehend",
+    "markDone": "Als erledigt markieren",
+    "markPending": "Als ausstehend markieren",
+    "cancelTransfer": "Überweisung abbrechen",
+    "cancelTransferTitle": "Diese Überweisung abbrechen?",
+    "cancelTransferDesc": "Es wurde kein Geld bewegt. Sie bleibt als abgebrochen in deinem Verlauf.",
+    "transferMarkedDone": "Überweisung abgeschlossen",
+    "transferMarkedPending": "Überweisung als ausstehend markiert",
+    "transferCancelled": "Überweisung abgebrochen",
+    "transferUpdateFailed": "Überweisung konnte nicht aktualisiert werden",
+    "feeShort": "+ {{amount}} Gebühr",
+    "payAmountLeaving": "Betrag, der {{account}} verlässt ({{currency}})",
+    "rateSuggested": "Vorschlag zum heutigen Kurs — ändere ihn, wenn deine Bank einen anderen genutzt hat.",
+    "rateSuggestedStale": "Vorschlag zum Kurs vom {{date}} — trage ein, was wirklich ankam.",
+    "rateUnavailable": "Für dieses Paar gibt es noch keinen Kurs — trage den erhaltenen Betrag ein.",
+    "appearance": {
+      "title": "Darstellung",
+      "color": "Farbe",
+      "auto": "Automatisch",
+      "autoHint": "Die Farbe der Bank verwenden oder eine für dieses Konto gewählte",
+      "custom": "Eigene Farbe",
+      "customShort": "Individuell",
+      "style": "Stil",
+      "subtle": "Dezent",
+      "bold": "Kräftig",
+      "preview": "Vorschau"
+    },
+    "accountCurrencyLockedBalance": "Dieses Konto hat ein Guthaben in {{currency}}, daher kann die Währung nicht geändert werden. Lege ein weiteres Konto in der gewünschten Währung an und überweise das Geld.",
+    "accountCurrencyLockedRecurring": "Eine wiederkehrende Zahlung, automatische Sparrate oder Kreditrückzahlung nutzt dieses Konto, daher kann die Währung nicht geändert werden. Verschiebe sie zuerst auf ein anderes Konto oder lösche sie.",
+    "accountCurrencyLockedCards": "Eine Karte belastet dieses Konto oder wird von ihm bezahlt, daher kann die Währung nicht geändert werden. Lege stattdessen ein weiteres Konto in der gewünschten Währung an.",
+    "accountCurrencyLockedTransfer": "Eine geplante oder ausstehende Überweisung betrifft dieses Konto, daher kann die Währung nicht geändert werden. Schließe die Überweisung zuerst ab oder storniere sie.",
+    "accountCurrencyLockedConfigured": "Karten, Schulden und Sparziele behalten die Währung, in der sie angelegt wurden ({{currency}}), daher kann sie nicht geändert werden. Lege stattdessen einen neuen Eintrag in der gewünschten Währung an.",
+    "ledgerText": {
+      "transferFee": "Überweisungsgebühr",
+      "transferFeeRefund": "Erstattung der Überweisungsgebühr",
+      "transferReversal": "Rückbuchung der Überweisung"
+    },
+    "accountCount_one": "{{count}} Konto",
+    "accountCount_other": "{{count}} Konten",
+    "shareOfAssetsLabel": "{{share}} des Vermögens",
+    "currencyNotIncluded_one": "{{currency}} ist nicht in der Summe enthalten — es liegt noch kein Wechselkurs vor",
+    "currencyNotIncluded_other": "{{currency}} sind nicht in der Summe enthalten — es liegen noch keine Wechselkurse vor",
+    "completeTransferTitle": "Überweisung als erledigt markieren",
+    "completeTransferDesc": "Banken rechnen oft zu ihrem eigenen Kurs um. Trage ein, was tatsächlich angekommen ist und welche Gebühr berechnet wurde."
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -1602,7 +1708,9 @@
     "remainingAfter": "{{amount}} übrig nach dieser Ausgabe",
     "overAfter": "{{amount}} über dem Budget nach dieser Ausgabe",
     "yearly": "Jährlich",
-    "once": "Eigener Zeitraum"
+    "once": "Eigener Zeitraum",
+    "currencyMismatch": "Dieses Budget wird in {{currency}} geführt. Gib den Betrag in {{currency}} ein.",
+    "remainingAfterAtMost": "Nach dieser Ausgabe höchstens {{amount}} übrig"
   },
   "budgetsPage": {
     "title": "Budgets",
@@ -1769,7 +1877,8 @@
     "perMonthOut": "Ausgaben pro Monat",
     "perMonthIn": "Einnahmen pro Monat",
     "notRunning_one": "{{count}} Zahlung wird nicht erstellt",
-    "notRunning_other": "{{count}} Zahlungen werden nicht erstellt"
+    "notRunning_other": "{{count}} Zahlungen werden nicht erstellt",
+    "amountReenterCurrency": "Jetzt in {{currency}} – gib den Betrag erneut in {{currency}} ein."
   },
   "calendar": {
     "title": "Kalender",
@@ -1959,7 +2068,17 @@
     "moveAndClose": "Verschieben & schließen",
     "afterFund": "{{account}} hat danach noch {{amount}}",
     "viewDetails": "Details ansehen",
-    "spaceBadge": "Sparraum"
+    "spaceBadge": "Sparraum",
+    "amountLeaving": "Verlässt {{account}} ({{currency}})",
+    "amountReceived": "Kommt an bei {{account}} ({{currency}})",
+    "currencyLabel": "Währung",
+    "currencyHint": "Dieser Sparraum führt sein Geld in dieser Währung. Sie lässt sich später nicht ändern.",
+    "autoSaveNoAccount": "Automatisches Sparen braucht ein Bank- oder Bargeldkonto in {{currency}}, der Währung dieses Sparraums.",
+    "autoSaveEstimate": "≈ {{amount}} in diesen Sparraum zum heutigen Kurs. Jede automatische Sparrate wird zum Kurs ihres eigenen Datums umgerechnet.",
+    "autoSaveEstimateStale": "≈ {{amount}} in diesen Sparraum zum Kurs vom {{date}}. Jede automatische Sparrate wird zum Kurs ihres eigenen Datums umgerechnet.",
+    "autoSaveNoRate": "Für {{from}} zu {{to}} gibt es noch keinen Wechselkurs. Jede automatische Sparrate wartet, bis einer vorliegt.",
+    "autoSaveNoSourceAccount": "Automatisches Sparen braucht ein Bank- oder Bargeldkonto, von dem gespart wird.",
+    "autoSavePaused": "Pausiert: {{reason}}"
   },
   "notifications": {
     "title": "Benachrichtigungen",
@@ -2075,11 +2194,15 @@
       },
       "budget_warning": {
         "title": "Budget fast aufgebraucht",
-        "body": "{{name}} hat {{percent}} % des {{period}}-Budgets verbraucht."
+        "body": "{{name}} hat {{percent}} % des {{period}}-Budgets verbraucht.",
+        "bodyIncomplete": "{{name}} hat {{percent}} % seines {{period}}-Budgets verbraucht ({{spent}} von {{amount}}). Einige Einträge in einer anderen Währung sind noch nicht mitgezählt, weil für sie kein Wechselkurs vorliegt.",
+        "bodyAmounts": "{{name}} hat {{percent}} % des {{period}}-Budgets verbraucht ({{spent}} von {{amount}})."
       },
       "budget_exceeded": {
         "title": "Budget überschritten",
-        "body": "{{name}} hat sein {{period}}-Budget überschritten."
+        "body": "{{name}} hat sein {{period}}-Budget überschritten.",
+        "bodyIncomplete": "{{name}} hat sein {{period}}-Budget überschritten ({{spent}} von {{amount}}). Einige Einträge in einer anderen Währung sind noch nicht mitgezählt, weil für sie kein Wechselkurs vorliegt.",
+        "bodyAmounts": "{{name}} hat sein {{period}}-Budget überschritten ({{spent}} von {{amount}})."
       },
       "recurring_posted": {
         "title": "Wiederkehrende Transaktion gebucht",
@@ -2119,7 +2242,16 @@
       },
       "card_autopay_failed": {
         "title": "Automatische Zahlung fehlgeschlagen",
-        "body": "{{card}}: {{amount}} wurden nicht bezahlt — {{reason}}. Bitte manuell zahlen."
+        "body": "{{card}}: {{amount}} wurden nicht bezahlt — {{reason}}. Bitte manuell zahlen.",
+        "reasons": {
+          "autopay_funding_missing": "{{card}}: {{amount}} wurden nicht bezahlt — das Konto, das diese Karte bezahlt, fehlt oder ist geschlossen. Wähle ein Konto aus oder zahle manuell.",
+          "autopay_liability": "{{card}}: {{amount}} wurden nicht bezahlt — eine Kreditkarte kann eine andere Karte nicht automatisch bezahlen. Bitte manuell zahlen.",
+          "autopay_currency_mismatch": "{{card}}: {{amount}} wurden nicht bezahlt — das zahlende Konto hat eine andere Währung als die Karte. Zahle manuell oder wähle ein Konto in der Währung der Karte.",
+          "autopay_funding_card": "{{card}}: {{amount}} wurden nicht bezahlt — die Karte, die sie bezahlt, kann gerade nicht verwendet werden. Bitte manuell zahlen.",
+          "autopay_quota": "{{card}}: {{amount}} wurden nicht bezahlt — das Transaktionslimit deines Tarifs ist erreicht. Führe ein Upgrade durch oder zahle manuell.",
+          "autopay_not_recorded": "{{card}}: {{amount}} wurden nicht bezahlt — die Zahlung konnte nicht erfasst werden. Bitte manuell zahlen.",
+          "autopay_interrupted": "{{card}}: {{amount}} wurden nicht bezahlt — die Zahlung wurde unterbrochen, bevor sie erfasst wurde. Prüfe die Karte und zahle bei Bedarf manuell."
+        }
       },
       "card_utilization_high": {
         "title": "Karte fast am Limit",
@@ -2336,8 +2468,7 @@
     "deleteTagOnly": "Nur Tag entfernen",
     "deleteTagOnlyHint": "Datensätze behalten ihre Daten — nur der Tag wird entfernt.",
     "deleteWithRecords": "Tag und Datensätze löschen",
-    "deleteWithRecordsHint_one": "Außerdem {{count}} getaggten Datensatz in den Papierkorb verschieben (umkehrbar).",
-    "deleteWithRecordsHint_other": "Außerdem {{count}} getaggte Datensätze in den Papierkorb verschieben (umkehrbar)."
+    "deleteWithRecordsHint": "Verschiebt diese in den Papierkorb, einschließlich aller Transaktionen eines getaggten Kunden und jeder getaggten Überweisung als Ganzes, und macht ihre Wirkung auf die Kontostände rückgängig."
   },
   "drilldown": {
     "loading": "Wird geladen…",
@@ -2457,7 +2588,9 @@
     "whichAccount": "Welches Konto?",
     "fromStatement": "Betrag aus der letzten Abrechnung der Karte — bitte prüfen",
     "savedTransfer": "Überweisung über {{amount}} gespeichert",
-    "savedCardPayment": "Kartenzahlung über {{amount}} gespeichert"
+    "savedCardPayment": "Kartenzahlung über {{amount}} gespeichert",
+    "currencyHeard": "Du hast {{amount}} gesagt, aber {{account}} wird in {{currency}} geführt – gib den Betrag in {{currency}} ein.",
+    "currencyHeardTransfer": "Du hast {{amount}} gesagt – gib den Betrag in der Währung jedes Kontos ein."
   },
   "resetData": {
     "title": "Alle Daten zurücksetzen",
@@ -2647,7 +2780,8 @@
     },
     "hint": {
       "after": "{{name}}: danach {{amount}} übrig",
-      "overAfter": "{{name}}: danach {{amount}} darüber"
+      "overAfter": "{{name}}: danach {{amount}} darüber",
+      "afterAtMost": "{{name}}: danach höchstens {{amount}} übrig"
     },
     "closed": "Geschlossen",
     "closedHint": "Zählt nicht, bis du es wieder öffnest.",
@@ -2704,7 +2838,8 @@
       "judgedOver_one": "Über {{count}} abgeschlossenen Zeitraum.",
       "judgedOver_other": "Über {{count}} abgeschlossene Zeiträume.",
       "byBudget": "Wohin das Geld ging",
-      "byBudgetNote": "Dieser Zeitraum, die kritischsten zuerst."
+      "byBudgetNote": "Dieser Zeitraum, die kritischsten zuerst.",
+      "amountsIn": "Beträge in {{currency}}"
     }
   },
   "debts": {
@@ -3068,6 +3203,146 @@
       "week": "Wöchentlich",
       "month": "Monatlich",
       "year": "Jährlich"
-    }
+    },
+    "currencyLabel": "Währung",
+    "currencyHint": "Die Währung, in der diese Schuld geführt wird. Nach der ersten Zahlung lässt sie sich nicht mehr ändern.",
+    "planCurrency": "Währung des Plans",
+    "planPerCurrency": "Jede Währung hat einen eigenen Plan – Schulden in verschiedenen Währungen werden nicht zusammengerechnet."
+  },
+  "fx": {
+    "excludedNotice_one": "{{count}} Eintrag in einer anderen Währung ist nicht enthalten (kein Wechselkurs)",
+    "excludedNotice_other": "{{count}} Einträge in einer anderen Währung sind nicht enthalten (kein Wechselkurs)",
+    "accountsExcludedNotice_one": "{{count}} Konto in einer anderen Währung ist nicht im Saldo enthalten (kein Wechselkurs)",
+    "accountsExcludedNotice_other": "{{count}} Konten in einer anderen Währung sind nicht im Saldo enthalten (kein Wechselkurs)"
+  },
+  "apiErrors": {
+    "transfer_accounts_required": "Wähle das Konto, von dem das Geld abgeht, und das Konto, auf das es geht.",
+    "transfer_same_account": "Wähle zwei verschiedene Konten.",
+    "transfer_account_unavailable": "Eines der Konten dieser Überweisung ist archiviert oder existiert nicht mehr. Stelle es zuerst wieder her.",
+    "transfer_account_currency_changed": "Die Währung eines Kontos hat sich geändert, nachdem diese Überweisung geplant wurde. Storniere sie und plane sie neu.",
+    "source_currency_mismatch": "Die Währung eines Kontos hat sich geändert, seit dieses Formular geöffnet wurde. Schließe es und öffne es erneut.",
+    "destination_currency_mismatch": "Die Währung eines Kontos hat sich geändert, seit dieses Formular geöffnet wurde. Schließe es und öffne es erneut.",
+    "invalid_transfer_transition": "Diese Überweisung kann nicht mehr in diesen Status wechseln. Lade neu und versuche es noch einmal.",
+    "invalid_transfer_status": "Wähle einen gültigen Überweisungsstatus.",
+    "invalid_transfer_trash_state": "Diese Überweisung ist bereits in diesem Zustand. Lade neu und versuche es noch einmal.",
+    "transfer_not_found_or_incomplete": "Nur eine abgeschlossene Überweisung kann in den Papierkorb verschoben oder daraus wiederhergestellt werden.",
+    "reversal_linked_transfer_is_immutable": "Eine stornierte Überweisung und ihre Rückbuchung sind dauerhaft – sie können weder gelöscht noch wiederhergestellt werden.",
+    "transfer_not_found": "Diese Überweisung existiert nicht mehr. Lade neu und versuche es noch einmal.",
+    "transfer_trashed": "Diese Überweisung oder ein Teil davon liegt im Papierkorb und kann daher nicht rückgängig gemacht werden.",
+    "transfer_is_reversal": "Eine Rückbuchung kann nicht rückgängig gemacht werden – erfasse stattdessen eine neue Überweisung.",
+    "transfer_already_reversed": "Diese Überweisung wurde bereits rückgängig gemacht.",
+    "transfer_reversal_conflict": "Diese Überweisung hat sich während der Rückbuchung geändert. Lade neu und versuche es noch einmal.",
+    "transfer_not_trashed": "Diese Überweisung liegt nicht im Papierkorb. Lösche zuerst die ganze Überweisung und entferne sie dann endgültig.",
+    "transfer_mutation_requires_transfer_service": "Dies gehört zu einer Überweisung und kann nicht einzeln geändert oder gelöscht werden. Mache stattdessen die ganze Überweisung rückgängig oder lösche sie.",
+    "invalid_fee_refund": "Die Gebührenerstattung muss null oder mehr betragen, mit höchstens 2 Dezimalstellen.",
+    "invalid_transfer_amounts": "Prüfe die Überweisungsbeträge und versuche es noch einmal.",
+    "amount_invalid": "Gib einen gültigen Betrag ein.",
+    "amount_not_positive": "Gib einen Betrag größer als null ein.",
+    "amount_too_many_decimals": "Verwende höchstens 2 Dezimalstellen.",
+    "amount_too_large": "Dieser Betrag ist zu hoch.",
+    "destination_amount_required": "Gib den Betrag ein, der in der Währung des anderen Kontos ankommt.",
+    "same_currency_amounts_differ": "Beide Konten haben dieselbe Währung, daher müssen gesendeter und empfangener Betrag übereinstimmen.",
+    "fee_invalid": "Die Gebühr muss null oder mehr betragen, mit höchstens 2 Dezimalstellen.",
+    "invalid_date": "Gib ein gültiges Datum ein.",
+    "system_row": "Dieser Eintrag legt den Kontostand fest – ändere ihn auf der Seite des Kontos.",
+    "space_requires_transfer": "Auf einem Space kannst du keine Transaktion erfassen – bewege Geld mit einer Überweisung hinein oder heraus.",
+    "debt_group": "Ändere diese Zahlung auf der Seite der Schuld – dort bleiben Tilgung und Zinsen getrennt.",
+    "debt_account": "Erfasse dies auf der Seite der Schuld – dort bleiben Tilgung und Zinsen getrennt.",
+    "transaction_changed": "Dieser Eintrag wurde während deiner Bearbeitung geändert oder gelöscht. Lade neu und versuche es noch einmal.",
+    "admin_ledger_row_locked": "Dies betrifft Kontostände, eine Überweisung oder eine Schuld und ist daher in der Admin-Konsole nicht möglich. Verwende stattdessen den Papierkorb des Arbeitsbereichs.",
+    "organization_missing": "Der Arbeitsbereich dieses Elements existiert nicht mehr.",
+    "reserved_cash_name": "Dieser Name ist für deine Standard-Bargeldbörse reserviert. Wähle einen anderen Namen.",
+    "default_cash_exists": "Du hast bereits eine Standard-Bargeldbörse.",
+    "default_cash_permanent": "Deine Standard-Bargeldbörse kann weder archiviert noch entfernt werden.",
+    "card_has_debt": "Begleiche die Karte, bevor du sie schließt.",
+    "card_has_history": "Diese Karte hat bereits einen Verlauf bei ihrer Bank. Schließe sie und füge bei der anderen Bank eine neue Karte hinzu.",
+    "currency_missing": "Die Währung dieses Kontos ist noch nicht eingerichtet. Lade neu und versuche es noch einmal; wenn es weiter passiert, kontaktiere den Support.",
+    "currency_mismatch": "Diese Angaben sind in verschiedenen Währungen. Verwende ein Konto oder einen Betrag in derselben Währung.",
+    "currency_mismatch_in": "Dies wird in {{currency}} geführt – gib den Betrag in {{currency}} ein.",
+    "currency_mismatch_debt": "Diese Schuld läuft in {{currency}} – verwende ein Konto in {{currency}}.",
+    "debt_currency_changed": "Die Währung dieser Schuld wurde gerade geändert. Lade sie neu und erfasse die Zahlung noch einmal.",
+    "currency_locked": "Diese Schuld hat bereits Zahlungen, daher kann ihre Währung nicht geändert werden. Lege stattdessen eine neue Schuld in der anderen Währung an.",
+    "account_currency_locked": "Die Währung dieses Kontos kann nicht mehr geändert werden. Lege ein weiteres Konto in der benötigten Währung an und überweise das Geld dorthin.",
+    "amount_required_for_currency_change": "Dadurch wechselt der Eintrag in eine andere Währung – gib seinen Betrag in der neuen Währung erneut ein.",
+    "split_currency_mismatch": "Alle Konten einer Aufteilung müssen dieselbe Währung haben.",
+    "invalid_currency": "Wähle eine gültige Währung.",
+    "cross_currency_recurring_policy_required": "Automatisches Sparen erfordert, dass beide Konten dieselbe Währung haben.",
+    "no_rate": "Für diese Währungen gibt es noch keinen Wechselkurs.",
+    "autopay_liability": "Eine Kreditkarte kann keine andere Karte automatisch bezahlen – bezahle sie jeden Monat selbst.",
+    "funding_self": "Eine Karte kann sich nicht selbst bezahlen.",
+    "funding_card": "Wähle eine Karte, mit der diese bezahlt werden kann.",
+    "funding_account": "Bezahle von einer aktiven Bank, mit Bargeld oder mit einer anderen Karte.",
+    "link_or_create": "Verknüpfe entweder eine bestehende Zahlung oder richte eine neue ein, nicht beides.",
+    "link_alone": "Verknüpfe zuerst nur diese Zahlung mit einer Schuld und bearbeite sie dann.",
+    "rule_is_autosave": "Automatisches Sparen wird in seinem Space verwaltet, nicht hier.",
+    "rule_pays_with_card": "Eine Rückzahlung kann nicht mit einer Karte erfolgen – eine Karte würde die Schuld nur verschieben, nicht tilgen.",
+    "rule_has_no_account": "Wähle zuerst das Konto, von dem diese Zahlung abgeht.",
+    "account_archived": "Dieses Konto ist archiviert – wähle zuerst ein aktives.",
+    "account_not_cash": "Eine wiederkehrende Rückzahlung muss von einem Bank- oder Bargeldkonto kommen.",
+    "direction_mismatch": "Diese Zahlung bewegt Geld für diese Schuld in die falsche Richtung.",
+    "debt_closed": "Diese Schuld ist geschlossen – öffne sie zuerst wieder.",
+    "debt_settled": "Diese Schuld ist beglichen – eine Rückzahlung würde sofort wieder enden.",
+    "repayment_exists": "Diese Schuld hat bereits eine wiederkehrende Rückzahlung. Beende zuerst die aktuelle.",
+    "rule_linked_elsewhere": "Diese Zahlung tilgt bereits eine andere Schuld. Löse dort zuerst die Verknüpfung.",
+    "rule_ended": "Diese Zahlung ist bereits beendet – sie würde nie etwas bezahlen.",
+    "rule_has_pending": "Bei dieser Zahlung warten noch Raten auf die Buchung. Öffne sie und erledige diese zuerst.",
+    "not_found": "Dieses Element existiert nicht mehr. Lade neu und versuche es noch einmal.",
+    "parent_not_found": "Das Hauptbudget existiert nicht mehr. Lade neu und versuche es noch einmal.",
+    "parent_is_self": "Ein Budget kann nicht sein eigenes Unterbudget sein.",
+    "parent_is_sub_budget": "Ein Unterbudget kann keine eigenen Unterbudgets haben.",
+    "insufficient_balance": "Das ist mehr als dein verfügbares Guthaben.",
+    "below_min_payout": "Das liegt unter dem Mindestauszahlungsbetrag.",
+    "personal_account_restricted": "Das ist bei einem persönlichen Konto nicht verfügbar.",
+    "no_code": "Fordere zuerst einen Code an.",
+    "cooldown": "Bitte warte einen Moment, bevor du einen weiteren Code anforderst.",
+    "no_email": "In deinem Konto ist keine E-Mail-Adresse hinterlegt.",
+    "unparseable": "Das konnte nicht verstanden werden. Versuche, es anders zu formulieren.",
+    "plan_limit": "Du hast das Limit deines Tarifs erreicht.",
+    "plan_limit_upgrade": "Du hast das Limit deines Tarifs erreicht. Wechsle zu Premium für mehr.",
+    "space_not_empty": "Verschiebe das Geld aus diesem Sparraum, bevor du ihn schließt oder löschst.",
+    "recurring_autosave_incomplete": "Diese automatische Sparrate braucht ein Konto, von dem das Geld kommt, und einen Sparraum, in den es fließt. Bearbeite sie und wähle beides.",
+    "recurring_card_missing": "Die Karte für diese Zahlung gibt es nicht mehr. Bearbeite sie und wähle eine andere Karte.",
+    "recurring_card_frozen": "Die Karte für diese Zahlung ist gesperrt. Entsperre sie oder wähle eine andere Karte.",
+    "recurring_card_closed": "Die Karte für diese Zahlung ist geschlossen. Bearbeite sie und wähle eine andere Karte.",
+    "recurring_failed": "Diese Zahlung konnte nicht gebucht werden. Es wird erneut versucht – wenn es weiter fehlschlägt, kontaktiere den Support.",
+    "recurring_account_currency": "Diese Zahlung läuft in {{currency}}, ihr Konto aber in {{account_currency}}. Bearbeite sie und wähle ein Konto in {{currency}}.",
+    "recurring_currency_missing": "Für diese Zahlung ist keine Währung festgelegt. Bearbeite sie und speichere sie erneut.",
+    "recurring_debt_unlinked": "Diese Rückzahlung ist mit keiner Schuld mehr verknüpft.",
+    "recurring_debt_missing": "Die Schuld, die hiermit getilgt wird, existiert nicht mehr.",
+    "recurring_debt_inactive": "Die Schuld, die hiermit getilgt wird, ist nicht aktiv, daher wurde nichts bezahlt.",
+    "autopay_not_recorded": "Die Kartenzahlung konnte nicht erfasst werden. Bitte manuell zahlen.",
+    "autopay_interrupted": "Die Kartenzahlung wurde unterbrochen, bevor sie erfasst wurde. Prüfe die Karte und zahle bei Bedarf manuell.",
+    "rate_limited": "Zu viele Wechselkursabfragen. Versuche es in einer Minute erneut.",
+    "amount_whole_units": "Diese Währung hat keine Nachkommastellen – gib einen ganzen Betrag ein.",
+    "autosave_rate_unavailable": "Für das Datum dieser automatischen Sparrate gibt es noch keinen Wechselkurs von {{from}} zu {{to}}. Sie wird ausgeführt, sobald einer vorliegt.",
+    "client_update_required": "Aktualisiere die App, um Konten in einer anderen Währung zu nutzen.",
+    "billing_cancel_failed": "Das Abonnement dieser Organisation konnte nicht gekündigt werden, daher wurde nichts gelöscht. Bitte versuche es gleich noch einmal.",
+    "billing_owner_only": "Nur der Inhaber der Organisation kann ihr Abonnement ändern.",
+    "billing_provider_failed": "Der Zahlungsanbieter konnte die Anfrage nicht abschließen. Bitte versuche es gleich noch einmal."
+  },
+  "adminFx": {
+    "title": "Wechselkurse",
+    "runNow": "Aktualisierung jetzt ausführen",
+    "ran": "Aktualisierung über {{pairs}} Paare gelaufen; {{remaining}} werden noch befüllt.",
+    "runFailed": "Die Wechselkurs-Aktualisierung konnte nicht ausgeführt werden.",
+    "loadFailed": "Der Wechselkurs-Status konnte nicht geladen werden.",
+    "never": "nie",
+    "neverRefreshed": "Die tägliche Wechselkurs-Aktualisierung ist für diese Datenbank noch nie gelaufen. Prüfe den fx-refresh-Zeitplan des Workers oder führe sie jetzt aus.",
+    "refreshStale": "Die tägliche Wechselkurs-Aktualisierung lief zuletzt {{when}} und scheint ausgefallen. Ältere Kurse werden nur bei einem Lauf ergänzt.",
+    "lastRefresh": "Tägliche Aktualisierung zuletzt {{when}}: {{pairs}} Paare, {{incomplete}} noch unvollständig.",
+    "colProvider": "Anbieter",
+    "colLastFetch": "Letzter Abruf",
+    "colLatestRate": "Neuester Kurs",
+    "colCalls": "Aufrufe OK / abgelehnt / fehlgeschlagen",
+    "colLastError": "Letzter Fehler",
+    "callsNote": "Die Aufrufzahlen gelten für diese Serverinstanz seit {{since}}; die Abrufdaten stammen aus den gespeicherten Kursen.",
+    "pairsOk": "Alle {{n}} verwendeten Währungspaare haben für jeden der letzten 10 Tage einen Kurs.",
+    "colPair": "Paar",
+    "colMissing": "Tage ohne Kurs (letzte 10)",
+    "noExcluded": "Kein Arbeitsbereich hat Buchungen, die mangels Kurs aus seinen Berichten herausfallen.",
+    "excluded": "Arbeitsbereiche mit ausgelassenen Buchungen ({{n}})",
+    "colRows": "Ausgelassene Buchungen",
+    "registerSchedule": "Wechselkurs-Zeitplan registrieren",
+    "scheduleMissing": "Der Zeitplan {{name}} ist nicht registriert — Wechselkurse, die älter als einen Monat sind, werden nicht ergänzt. Registriere ihn mit der Schaltfläche oben."
   }
 }

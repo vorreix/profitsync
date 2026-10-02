@@ -18,6 +18,7 @@ import { DebtStatusBadge } from "@/components/debts/DebtStatusBadge"
 import { DebtFormSheet } from "@/components/debts/DebtFormSheet"
 import { LinkRepaymentDialog } from "@/components/debts/LinkRepaymentDialog"
 import { RecordPaymentSheet } from "@/components/debts/RecordPaymentSheet"
+import { ruleErrorText } from "@/components/recurring/rule-error"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -239,10 +240,11 @@ export function DebtDetailPage() {
                 </p>
               </div>
             </div>
+            {/* Why it stopped, in the reader's language (MC-077). */}
             {repayment.last_error && (
               <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                <span>{repayment.last_error}</span>
+                <span>{ruleErrorText(repayment.last_error, t("apiErrors.recurring_failed"))}</span>
               </p>
             )}
             {canWrite && (

@@ -10,11 +10,13 @@ import { useApiQuery } from "@/hooks/use-api-query"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
-import { formatMoney } from "@/lib/wealth"
+import { formatApprox, formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { budgetState } from "@/lib/budget"
 import type { SpendingBudget, SpendingBudgetDetail, SpendingBudgetsResponse } from "@/lib/types"
 import { budgetIcon } from "@/components/budget/budget-icons"
-import { BAR_COLOR, DELTA_COLOR, barPct, budgetName, fmtDay, windowLabel } from "@/components/budget/budget-format"
+import { BAR_COLOR, DELTA_COLOR, barPct, budgetCurrency, budgetName, fmtDay, moneyTooltip, windowLabel } from "@/components/budget/budget-format"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { BudgetRow, type BudgetRowActions } from "@/components/budget/BudgetRow"
 import { SpendingBudgetDialog, type SpendingBudgetDialogMode } from "@/components/budget/SpendingBudgetDialog"
 import { Badge } from "@/components/ui/badge"
@@ -56,7 +58,6 @@ export function BudgetDetailPage() {
   const isPersonal = activeOrg?.account_type === "personal"
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
-  const money = (n: number) => formatMoney(n, currency)
   const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
 
   const list = useApiQuery<SpendingBudgetsResponse>("/api/spending-budgets")
@@ -134,6 +135,10 @@ export function BudgetDetailPage() {
     )
   }
 
+  // Every figure here is in the BUDGET's currency (the one it was created in),
+  // never the workspace's by default; a recent row keeps its own (MC-079/083).
+  const budgetCur = budgetCurrency(budget, detail.data?.currency || list.data?.currency || currency)
+  const money = (n: number, cur?: string | null) => formatMoney(n, cur || budgetCur)
   const name = budgetName(t, budget)
   const Icon = budgetIcon(budget.icon)
   const closed = budget.status === "closed"
@@ -236,6 +241,8 @@ export function BudgetDetailPage() {
             {budget.per_day_left !== null && <> · {t("budgets.perDay", { amount: money(budget.per_day_left) })}</>}
             {budget.window.days_left === null && phase === "active" && budget.period === "once" && windowLabel(t, budget, i18n.language)}
           </p>
+          {/* Partial spend is never shown as the whole figure (MC-083). */}
+          <FxExcludedNotice count={budget.excluded_count} className="mt-1" />
         </CardContent>
       </Card>
 
@@ -277,13 +284,14 @@ export function BudgetDetailPage() {
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={6} fontSize={11} />
                 <YAxis hide />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartTooltip content={<ChartTooltipContent formatter={moneyTooltip(chartConfig, (n) => money(n))} />} />
                 <Bar dataKey="spent" radius={4} isAnimationActive={!reduced}>
                   {series.map((p) => <Cell key={p.start} fill={CHART_BAR[p.state]} />)}
                 </Bar>
                 <Line dataKey="amount" stroke="var(--chart-1)" strokeWidth={2} strokeDasharray="4 4" dot={false} isAnimationActive={!reduced} />
               </ComposedChart>
             </ChartContainer>
+            <FxExcludedNotice count={series.reduce((n, p) => n + (p.excluded_count ?? 0), 0)} />
           </CardContent>
         </Card>
       )}
@@ -306,14 +314,21 @@ export function BudgetDetailPage() {
               {detail.data.recent.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <div className="min-w-0">
-                    <p className="truncate">{r.description || r.category || "—"}</p>
+                    <p className="truncate">{ledgerDescription(r, t) || r.category || "—"}</p>
                     <p className="text-[11px] text-muted-foreground">
                       {fmtDay(r.date, i18n.language)}{r.category ? ` · ${r.category}` : ""}{r.client_name ? ` · ${r.client_name}` : ""}
                       {r.kind === "refund" && ` · ${t("budgets.detail.refund")}`}
                     </p>
                   </div>
-                  <span className={`shrink-0 tabular-nums ${r.amount < 0 ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
-                    {r.amount < 0 ? "+" : ""}{money(Math.abs(r.amount))}
+                  {/* The row in its own money; a foreign row also says what it
+                      counted as in the budget's currency (MC-079). */}
+                  <span className={`shrink-0 text-end tabular-nums ${r.amount < 0 ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
+                    <span className="block">{r.amount < 0 ? "+" : ""}{money(Math.abs(r.amount), r.currency_code)}</span>
+                    {r.currency_code && r.currency_code !== budgetCur && (
+                      <span className="block text-[11px] text-muted-foreground">
+                        {r.amount_in == null ? t("transactions.amountNoRate") : formatApprox(Math.abs(r.amount_in), budgetCur)}
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}
@@ -340,7 +355,7 @@ export function BudgetDetailPage() {
                       <span className="font-medium">{t(`budgets.history.${h.action}`, { defaultValue: h.action })}</span>
                       {Object.entries(h.changes).filter(([k]) => k !== "icon").map(([k, v]) => (
                         <span key={k} className="ms-1.5 text-muted-foreground">
-                          {t(`budgets.history.field.${k}`, { defaultValue: k })}: {formatChange(v.from, k)} → {formatChange(v.to, k)}
+                          {t(`budgets.history.field.${k}`, { defaultValue: k })}: {formatChange(v.from, k, (v as { currency?: string }).currency)} → {formatChange(v.to, k, (v as { currency?: string }).currency)}
                         </span>
                       ))}
                     </p>
@@ -371,10 +386,11 @@ export function BudgetDetailPage() {
     </div>
   )
 
-  function formatChange(v: unknown, field: string): string {
+  /** `cur`: the currency an amount change was recorded in (MC-149); older entries are in the budget's own. */
+  function formatChange(v: unknown, field: string, cur?: string): string {
     if (v === null || v === undefined || v === "") return t("budgets.history.none")
     if (Array.isArray(v)) return v.length ? v.join(", ") : t("budgets.allSpending")
-    if (field === "amount" && typeof v === "number") return money(v)
+    if (field === "amount" && typeof v === "number") return money(v, cur)
     if (field === "period" && typeof v === "string") return t(`budget.${v}`, { defaultValue: v })
     if (field === "status" && typeof v === "string") return v === "closed" ? t("budgets.closed") : t("budgets.menu.reopen")
     if ((field === "start_date" || field === "end_date") && typeof v === "string") return fmtDay(v, i18n.language, { day: "numeric", month: "short", year: "numeric" })

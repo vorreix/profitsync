@@ -6,7 +6,9 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canWriteRole } from "@/lib/roles"
 import { spaceProgress } from "@/lib/spaces"
-import { formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { accountCurrency, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
+import { spacesSavedHeadline } from "@/components/spaces/spaces-total"
 import type { WealthAccount } from "@/lib/types"
 import { spaceIconFor } from "@/components/wealth/space-icons"
 import { Button } from "@/components/ui/button"
@@ -42,7 +44,8 @@ export function SpacesCard({ className = "" }: { className?: string }) {
   const canWrite = canWriteRole(activeOrg?.role)
   const { balancesVisible } = useBalancePrivacy()
   const { data, loading } = useApiQuery<WealthAccount[]>("/api/spaces")
-  const money = (n: number) => formatMoney(n, currency, balancesVisible)
+  const money = (n: number, c?: string) => formatMoney(n, c ?? currency, balancesVisible)
+  const { summary } = useConsolidatedWealth()
 
   if (loading) {
     return (
@@ -56,7 +59,9 @@ export function SpacesCard({ className = "" }: { className?: string }) {
   }
 
   const active = (data ?? []).filter((s) => !s.archived_at)
-  const totalSaved = active.reduce((sum, s) => sum + Number(s.current_balance), 0)
+  // Spaces can hold different currencies, so the headline is never a raw sum
+  // (the same helper as the /spaces hero).
+  const headline = spacesSavedHeadline(active, currency, summary, balancesVisible)
 
   if (active.length === 0) {
     if (!canWrite) return null
@@ -96,7 +101,7 @@ export function SpacesCard({ className = "" }: { className?: string }) {
       icon={<PiggyIcon className="size-4" aria-hidden />}
       title={t("spaces.title")}
       count={active.length}
-      headline={money(totalSaved)}
+      headline={headline}
       subline={t("spaces.savedAcross", { count: active.length })}
       storageKey={`ps_dash_spaces_open_${activeOrg?.id ?? ""}`}
       onOpen={() => navigate("/spaces")}
@@ -114,7 +119,7 @@ export function SpacesCard({ className = "" }: { className?: string }) {
                 <span className="flex w-full items-center gap-2">
                   <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.nickname}</span>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums">{money(Number(s.current_balance))}</span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">{money(Number(s.current_balance), accountCurrency(s, currency))}</span>
                 </span>
                 {p ? (
                   <span className="flex w-full items-center gap-2">

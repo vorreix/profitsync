@@ -35,9 +35,10 @@ import {
   Wallet,
 } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { isDefaultCash } from "@/lib/cash-wallet"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { amountExceedsLimit } from "@/lib/money"
-import type { DebtsOverview, WealthAccount } from "@/lib/types"
+import type { DebtsOverview, WealthAccount, WealthSummaryAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -57,11 +58,18 @@ import {
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
+import { ApproxBalance } from "@/components/wealth/ApproxBalance"
+import { CurrencyBreakdown } from "@/components/wealth/CurrencyBreakdown"
+import { ScheduledTransfersPanel } from "@/components/wealth/ScheduledTransfersPanel"
+import { availableFromSummary, formatParts, savedFromSummary, useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
+import { type CurrencyAmount, sumByCurrency, summarizeWealthByCurrency } from "@/lib/reporting-fields"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { CardsTab } from "@/components/cards/CardsTab"
-import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
+import { type BankFormState, appearancePayload, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
+import { accountAppearance } from "@/lib/account-color"
 import { isLiabilityType } from "@/lib/credit-card"
-import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, currencySymbol, formatDateLabel, formatList, formatMoney, moveBefore, useBalancePrivacy } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 // The org's bank-account allowance (plan-based, server-enforced via 402). Loaded
@@ -113,8 +121,8 @@ function pointerFromActivator(ev: Event | null): { x: number; y: number } {
   return { x: me?.clientX ?? 0, y: me?.clientY ?? 0 }
 }
 
-type CreateForm = BankFormState & { opening_balance: string }
-const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
+type CreateForm = BankFormState & { opening_balance: string; currency_code: string }
+const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "", currency_code: "" }
 
 /**
  * /wealth — one page, two sections: Banks (`/wealth`) and Cards
@@ -134,7 +142,6 @@ export function WealthPage() {
   const { activeOrg } = useOrg()
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
-  const symbol = currencySymbol(currency)
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab: WealthTab = searchParams.get("tab") === "cards" ? "cards" : "banks"
@@ -159,10 +166,9 @@ export function WealthPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
   // Debts (loans I owe / money owed to me) live on /debts but belong in net worth.
-  // The raw PER-CURRENCY buckets are stored and narrowed at render time: the
-  // loader runs once on mount, before the workspace currency has resolved, so
-  // filtering inside it compares against a currency that is not the real one yet
-  // and silently totals nothing.
+  // The raw PER-CURRENCY buckets are stored as they come: until the summary
+  // lands they are shown per currency beside everything else, so a debt in a
+  // foreign currency is never silently left out of net worth.
   const [debtBuckets, setDebtBuckets] = useState<{
     owed: { currency: string; amount: number }[]
     receivable: { currency: string; amount: number }[]
@@ -170,6 +176,8 @@ export function WealthPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  // The create dialog makes a bank account, or a cash wallet (MC-072).
+  const [createCash, setCreateCash] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [quota, setQuota] = useState<BankQuota | null>(null)
   const [form, setForm] = useState<CreateForm>(emptyCreate)
@@ -279,8 +287,8 @@ export function WealthPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPost("/api/wealth/accounts/reorder", token, { ids })
-    } catch {
-      toast.error(t("couldNotUpdate"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("couldNotUpdate")))
       await load()
     }
   }
@@ -291,23 +299,56 @@ export function WealthPage() {
     setTransferOpen(true)
   }
 
+  // The consolidated picture comes from the server (GET /api/wealth/summary):
+  // every account converted into the reporting currency at its latest rate,
+  // assets, liabilities and net worth. It posts today's due recurring rows
+  // itself, like the accounts GET below — but two parallel posts can still
+  // race (the one that loses the insert may read balances a moment before the
+  // winner's UPDATE lands), so it waits for the accounts, as on the dashboard.
+  const { summary, byAccount } = useConsolidatedWealth(!loading)
+  const reporting = summary?.reporting_currency ?? currency
+  // Until the summary lands — or if it fails — the browser can only add money
+  // WITHIN a currency. Every hero figure is therefore a list of per-currency
+  // parts: one part (the familiar total, identical to the converted one) for a
+  // single-currency workspace, "€1,000 + ₹75,000" for a mixed one — never the
+  // raw 76,000, and never a net worth that silently drops a foreign debt.
   // `total` is assets − card debt (a card's available credit is never counted).
   // Net worth still counts EVERY account, cards included — only the Banks list
-  // below leaves credit cards out (they live under Cards).
-  const { total, assets, liabilities } = useWealthSummary(accounts)
-  // Money parked in Spaces is still the user's money, so net worth must include
-  // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
-  // so this is naturally personal-only.
-  const savedTotal = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
-  // Only SAME-CURRENCY debts join net worth — no exchange rate is invented.
-  const debtTotals = useMemo(() => {
-    const sum = (xs: { currency: string; amount: number }[]) =>
-      xs.filter((x) => x.currency === currency).reduce((acc, x) => acc + x.amount, 0)
-    return { owed: sum(debtBuckets.owed), receivable: sum(debtBuckets.receivable) }
-  }, [debtBuckets, currency])
-  // A loan reduces net worth the way card debt does; a receivable adds to it
-  // (owed to you, but not liquid — it stays out of "Available").
-  const netWorth = total + savedTotal + debtTotals.receivable - debtTotals.owed
+  // below leaves credit cards out (they live under Cards). Money parked in
+  // Spaces is still the user's money, so net worth includes it (a bank→Space
+  // transfer nets to zero; /api/spaces 403s for business orgs, so this is
+  // naturally personal-only). Debts (loans I owe / money owed to me) live on
+  // /debts but belong in net worth; a receivable is an asset but not liquid,
+  // so it stays out of "Available".
+  const figures = useMemo(() => {
+    if (summary) {
+      const one = (amount: number) => sumByCurrency([{ currency: summary.reporting_currency, amount }])
+      return {
+        netWorth: one(summary.net_worth),
+        assets: one(summary.assets),
+        cards: one(summary.card_liabilities),
+        debtsOwed: one(summary.debts_owed),
+        available: one(availableFromSummary(summary)),
+        saved: one(savedFromSummary(summary)),
+      }
+    }
+    const groups = summarizeWealthByCurrency(accounts, currency)
+    const of = (pick: (g: (typeof groups)[number]) => number) => groups.map((g) => ({ currency: g.currency, amount: pick(g) }))
+    const saved = spaces.filter((s) => !s.archived_at).map((s) => ({ currency: accountCurrency(s, currency), amount: Number(s.current_balance) }))
+    const owedNegated = debtBuckets.owed.map((x) => ({ currency: x.currency, amount: -x.amount }))
+    return {
+      netWorth: sumByCurrency([...of((g) => g.total), ...saved, ...debtBuckets.receivable, ...owedNegated]),
+      assets: sumByCurrency([...of((g) => g.assets), ...saved, ...debtBuckets.receivable]),
+      cards: sumByCurrency(of((g) => g.liabilities)),
+      debtsOwed: sumByCurrency(debtBuckets.owed),
+      available: sumByCurrency(of((g) => g.total)),
+      saved: sumByCurrency(saved),
+    }
+  }, [summary, accounts, spaces, debtBuckets, currency])
+  const money = (parts: CurrencyAmount[]) => formatParts(parts, reporting, balancesVisible)
+  const positive = (parts: CurrencyAmount[]) => parts.some((p) => p.amount > 0)
+  // A total that leaves a currency out must say so beside the number.
+  const partial = !!summary && !summary.complete
   const banks = useMemo(() => accounts.filter((a) => !isLiabilityType(a.type)), [accounts])
   const active = useMemo(() => banks.filter((a) => !a.archived_at), [banks])
   const archived = useMemo(() => banks.filter((a) => a.archived_at), [banks])
@@ -367,7 +408,16 @@ export function WealthPage() {
       setUpgradeOpen(true)
       return
     }
-    setForm(emptyCreate)
+    setCreateCash(false)
+    setForm({ ...emptyCreate, currency_code: currency })
+    setCreateOpen(true)
+  }
+
+  // Another cash wallet — typically cash in another currency (MC-072). Only
+  // banks count against the plan's allowance, so this one is never gated.
+  function openCreateCash() {
+    setCreateCash(true)
+    setForm({ ...emptyCreate, currency_code: currency })
     setCreateOpen(true)
   }
 
@@ -380,14 +430,14 @@ export function WealthPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch(`/api/wealth/accounts/${account.id}`, token, { set_default: next })
-    } catch {
-      toast.error(t("couldNotUpdate"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("couldNotUpdate")))
       await load()
     }
   }
 
   async function handleCreate() {
-    if (!form.bank_name.trim()) {
+    if (!createCash && !form.bank_name.trim()) {
       toast.error(t("bankNameRequired"))
       return
     }
@@ -399,19 +449,28 @@ export function WealthPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost("/api/wealth/accounts", token, {
+      const code = form.currency_code || currency
+      await apiPost("/api/wealth/accounts", token, createCash ? {
+        type: "cash",
+        // Unnamed, it is told apart from Cash in Hand by its currency.
+        bankName: form.bank_name.trim() || `${t("cash")} ${code}`,
+        openingBalance: Number(form.opening_balance || 0),
+        currency_code: code,
+      } : {
         type: "bank",
         bankName: form.bank_name.trim(),
         nickname: form.nickname.trim(),
         icon: form.icon,
         openingBalance: Number(form.opening_balance || 0),
+        currency_code: code,
+        ...appearancePayload(form),
         ...bankDetailsPayload(form),
       })
       toast.success(t("accountAdded"))
       setCreateOpen(false)
       await load()
-    } catch {
-      toast.error(t("couldNotAdd"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("couldNotAdd")))
     } finally {
       setSaving(false)
     }
@@ -425,8 +484,8 @@ export function WealthPage() {
       await apiDelete(`/api/wealth/accounts/${account.id}`, token)
       toast.success((account.transaction_count ?? 0) > 0 ? t("accountArchived") : t("accountRemoved"))
       await load()
-    } catch {
-      toast.error(t("failedToArchive"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("failedToArchive")))
     } finally {
       setSaving(false)
     }
@@ -451,6 +510,20 @@ export function WealthPage() {
       setSaving(false)
     }
   }
+
+  // Currency + opening balance — the same two fields for a bank and a cash wallet.
+  const currencyFields = (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label>{t("accountCurrency")}</Label>
+        <CurrencyCombobox value={form.currency_code || currency} onValueChange={(value) => setForm((f) => ({ ...f, currency_code: value }))} disabled={saving} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>{t("openingBalanceLabel", { symbol: currencySymbol(form.currency_code || currency) })}</Label>
+        <Input type="number" min="0" step="0.01" value={form.opening_balance} placeholder={`${currencySymbol(form.currency_code || currency)} 0.00`} onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))} />
+      </div>
+    </div>
+  )
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -495,51 +568,67 @@ export function WealthPage() {
               {loading ? (
                 <Skeleton className="mt-2 h-9 w-40" />
               ) : (
-                <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="text-3xl font-bold tabular-nums sm:text-4xl">{money(figures.netWorth)}</p>
+                  {/* The why is visible text in CurrencyBreakdown below (always shown when
+                      partial — an unrated currency makes the workspace multi-currency),
+                      not a title= tooltip a phone never shows (MC-139). */}
+                  {partial && (
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                      {t("excludesCurrencies", { currencies: formatList(summary.excluded_currencies) })}
+                    </Badge>
+                  )}
+                </div>
+              )}
+              {!loading && summary?.stale && summary.as_of && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{t("ratesFrom", { date: formatDateLabel(summary.as_of) })}</p>
               )}
             </div>
-            {!loading && (liabilities > 0 || savedTotal > 0 || debtTotals.owed > 0) && (
+            {!loading && (positive(figures.cards) || positive(figures.saved) || positive(figures.debtsOwed)) && (
               <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:w-auto sm:justify-end">
-                {liabilities > 0 && (
+                {positive(figures.cards) && (
                   <p className="inline-flex flex-wrap items-center gap-x-2">
-                    <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal + debtTotals.receivable, currency, balancesVisible)}</span>
+                    <span className="tabular-nums">{t("assets")}: {money(figures.assets)}</span>
                     <span aria-hidden>·</span>
                     <button
                       type="button"
                       onClick={() => setTab("cards")}
                       className="ios-tap tabular-nums text-red-600 underline-offset-2 hover:underline dark:text-red-400"
                     >
-                      {t("owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
+                      {t("owedOnCards")}: {money(figures.cards)}
                     </button>
                   </p>
                 )}
                 {/* Card debt and borrowed money are different obligations with
                     different homes, so they get their own chips rather than one
                     blended "liabilities" figure. */}
-                {debtTotals.owed > 0 && (
+                {positive(figures.debtsOwed) && (
                   <button
                     type="button"
                     onClick={() => navigate("/debts")}
                     className="ios-tap inline-flex flex-wrap items-center gap-x-2 tabular-nums text-red-600 underline-offset-2 hover:underline dark:text-red-400"
                   >
-                    {t("liabilities")}: {formatMoney(debtTotals.owed, currency, balancesVisible)} →
+                    {t("liabilities")}: {money(figures.debtsOwed)} →
                   </button>
                 )}
-                {savedTotal > 0 && (
+                {positive(figures.saved) && (
                   <button
                     type="button"
                     onClick={() => navigate("/spaces")}
                     className="inline-flex flex-wrap items-center gap-x-2 hover:text-foreground"
                   >
-                    <span className="tabular-nums">{t("availableLabel")}: {formatMoney(total, currency, balancesVisible)}</span>
+                    <span className="tabular-nums">{t("availableLabel")}: {money(figures.available)}</span>
                     <span aria-hidden>·</span>
-                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, currency, balancesVisible)} →</span>
+                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {money(figures.saved)} →</span>
                   </button>
                 )}
               </div>
             )}
           </div>
         </div>
+
+        {/* Multi-currency only: the native totals per currency behind the figure above. */}
+        {!loading && summary?.multi_currency && <CurrencyBreakdown summary={summary} visible={balancesVisible} />}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold">
@@ -554,6 +643,9 @@ export function WealthPage() {
                 <ArrowLeftRight className="size-4" /> {t("transfer")}
               </Button>
             )}
+            <Button size="sm" variant="outline" onClick={openCreateCash} disabled={loading} className="min-h-11 sm:min-h-8">
+              <Wallet className="size-4" /> {t("addCash")}
+            </Button>
             <Button size="sm" onClick={openCreate} disabled={loading} className="relative min-h-11 sm:min-h-8">
               {atBankLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
               {t("addBank")}
@@ -586,6 +678,8 @@ export function WealthPage() {
                     <AccountCard
                       account={account}
                       currency={currency}
+                      summaryAccount={byAccount.get(account.id)}
+                      reportingCurrency={summary?.reporting_currency}
                       balancesVisible={balancesVisible}
                       handle={handle}
                       onOpen={() => navigate(`/wealth/${account.id}`)}
@@ -635,6 +729,9 @@ export function WealthPage() {
           </p>
         )}
 
+        {/* Planned / pending transfers — intent only until marked done. Renders nothing when there are none. */}
+        {!loading && <ScheduledTransfersPanel canWrite={canWrite} visible={balancesVisible} />}
+
         {archived.length > 0 && (
           <div className="space-y-3">
             <p className="text-sm font-medium text-muted-foreground">{t("archived")}</p>
@@ -648,7 +745,7 @@ export function WealthPage() {
                         <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
                         <Badge variant="outline" className="shrink-0 py-0 text-[10px]">{t("archived")}</Badge>
                       </div>
-                      <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+                      <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), accountCurrency(account, currency), balancesVisible)}</p>
                     </div>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => restore(account)} disabled={saving}>
@@ -713,26 +810,24 @@ export function WealthPage() {
       {/* Create bank dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
-          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{createCash ? t("addCash") : t("addBankAccount")}</DialogTitle></DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
-            <BankAccountFormFields
-              form={form}
-              onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
-              autoFocusName
-              beforeBankDetails={
+            {createCash ? (
+              <>
                 <div className="space-y-1.5">
-                  <Label>{t("openingBalanceLabel", { symbol })}</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.opening_balance}
-                    placeholder={`${symbol} 0.00`}
-                    onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))}
-                  />
+                  <Label htmlFor="cash-name">{t("nickname")}</Label>
+                  <Input id="cash-name" autoFocus maxLength={60} value={form.bank_name} placeholder={`${t("cash")} ${form.currency_code || currency}`} onChange={(e) => setForm((f) => ({ ...f, bank_name: e.target.value }))} />
                 </div>
-              }
-            />
+                {currencyFields}
+              </>
+            ) : (
+              <BankAccountFormFields
+                form={form}
+                onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+                autoFocusName
+                beforeBankDetails={currencyFields}
+              />
+            )}
           </div>
           <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
@@ -894,10 +989,14 @@ function DndAccountCard({
 }
 
 function AccountCard({
-  account, currency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, onSetDefault, saving,
+  account, currency, summaryAccount, reportingCurrency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, onSetDefault, saving,
 }: {
   account: AccountRow
+  /** Workspace (reporting) currency — only the fallback for rows without their own. */
   currency: string
+  /** This account's line in GET /api/wealth/summary (the ≈ value), when known. */
+  summaryAccount?: WealthSummaryAccount
+  reportingCurrency?: string
   balancesVisible: boolean
   handle: HandleProps
   onOpen: () => void
@@ -911,6 +1010,18 @@ function AccountCard({
   const isCash = account.type === "cash"
   const kindLabel = isCash ? t("cash") : t("bank")
   const cardCount = account.card_count ?? 0
+  // The account's own colour (src/lib/account-color.ts): a rail + a wash in
+  // "subtle", the whole tile in "bold". On a bold tile every foreground colour
+  // has to come off the palette instead of the theme, or the muted greys and
+  // the secondary badges dissolve into the gradient.
+  const look = accountAppearance(account)
+  const onColor = look.bold
+  const ink = look.text === "light" ? "text-white" : "text-slate-900"
+  const inkSoft = look.text === "light" ? "text-white/75" : "text-slate-900/70"
+  const inkHover = look.text === "light" ? "hover:text-white" : "hover:text-slate-900"
+  const chip = look.text === "light"
+    ? "border-white/25 bg-white/15 text-white"
+    : "border-slate-900/20 bg-slate-900/10 text-slate-900"
 
   return (
     // "Stretched overlay" card: a single full-bleed button is the click target
@@ -918,33 +1029,55 @@ function AccountCard({
     // genuinely interactive bits — Adjust, the cards badge + the actions menu —
     // re-enable pointer events. This keeps the Adjust control right next to the
     // balance without nesting interactive elements inside another button.
-    <div className={`group relative rounded-2xl border bg-card transition-colors hover:border-primary/40 ${isCash ? "ring-1 ring-primary/20" : ""}`}>
+    <div
+      style={look.vars as React.CSSProperties}
+      className={cn(
+        "acct-colored group relative rounded-2xl border transition-colors",
+        onColor ? "acct-bold" : "acct-subtle acct-rail bg-card hover:border-primary/40",
+        isCash && !onColor && "ring-1 ring-primary/20",
+      )}
+    >
       <button
         type="button"
         onClick={onOpen}
         aria-label={`${accountDisplayName(account)} — ${t("viewTransactions")}`}
-        className="pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          onColor ? "hover:bg-black/10" : "hover:bg-muted/30",
+        )}
       />
 
       <div className="pointer-events-none relative z-10 flex flex-col p-4">
         <div className="flex min-w-0 items-center gap-3 pe-16">
-          <WealthAccountIcon account={account} className="size-10" />
+          <WealthAccountIcon
+            account={account}
+            className="size-10"
+            accent={onColor ? (look.text === "light" ? "glass" : "glass-dark") : "tint"}
+          />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className={cn("truncate text-sm font-semibold", onColor && ink)}>{accountDisplayName(account)}</p>
+            <p className={cn("truncate text-xs", onColor ? inkSoft : "text-muted-foreground")}>
               {isCash ? t("cash") : (account.nickname ? account.bank_name : kindLabel)}
             </p>
           </div>
         </div>
 
         <div className="mt-4 flex items-start gap-1.5">
-          <p className="text-2xl font-bold tabular-nums">
-            {formatMoney(Number(account.current_balance), currency, balancesVisible)}
-          </p>
+          <div className="min-w-0">
+            {/* The balance in the account's OWN currency — the fact. */}
+            <p className={cn("text-2xl font-bold tabular-nums", onColor && ink)}>
+              {formatMoney(Number(account.current_balance), accountCurrency(account, currency), balancesVisible)}
+            </p>
+            {/* …and, for a foreign-currency account, what that is worth in the reporting currency. */}
+            <ApproxBalance account={summaryAccount} reportingCurrency={reportingCurrency} visible={balancesVisible} />
+          </div>
           <Button
             variant="ghost"
             size="icon"
-            className="pointer-events-auto size-7 shrink-0 -translate-y-1.5 text-muted-foreground hover:text-foreground"
+            className={cn(
+              "pointer-events-auto size-7 shrink-0 -translate-y-1.5",
+              onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground hover:text-foreground",
+            )}
             aria-label={t("adjust")}
             title={t("adjust")}
             onClick={(e) => { e.stopPropagation(); onAdjust() }}
@@ -955,12 +1088,22 @@ function AccountCard({
 
         <div className="mt-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
-            <Badge variant="secondary" className="gap-1">
-              {isCash ? <Wallet className="size-3" /> : null}
-              {kindLabel}
-            </Badge>
+            {onColor ? (
+              <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium", chip)}>
+                {isCash ? <Wallet className="size-3" /> : null}
+                {kindLabel}
+              </span>
+            ) : (
+              <Badge variant="secondary" className="gap-1">
+                {isCash ? <Wallet className="size-3" /> : null}
+                {kindLabel}
+              </Badge>
+            )}
             {account.is_default && (
-              <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" variant="outline">
+              <Badge
+                className={cn("gap-1", onColor ? chip : "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300")}
+                variant="outline"
+              >
                 <Star className="size-3 fill-current" /> {t("defaultBadge")}
               </Badge>
             )}
@@ -970,13 +1113,21 @@ function AccountCard({
                 to={`/wealth/${account.id}#cards`}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`${t("cards.cardsOnBank", { count: cardCount })} — ${t("cards.viewCards")}`}
-                className="pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                className={cn(
+                  "pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium transition-colors",
+                  onColor ? chip : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
               >
                 <CreditCard className="size-3" aria-hidden /> {t("cards.cardsOnBank", { count: cardCount })}
               </Link>
             )}
           </span>
-          <span className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-primary">
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs font-medium transition-colors",
+              onColor ? inkSoft : "text-muted-foreground group-hover:text-primary",
+            )}
+          >
             {t("viewTransactions")} <ChevronRight className="size-3.5 rtl:rotate-180" />
           </span>
         </div>
@@ -992,13 +1143,21 @@ function AccountCard({
           {...handle.attributes}
           aria-label={t("dragHandle")}
           title={t("dragHandle")}
-          className="ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          className={cn(
+            "ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md transition-colors active:cursor-grabbing",
+            onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
         >
           <GripVertical className="size-4" />
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t("account")}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground"}
+              aria-label={t("account")}
+            >
               <MoreVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -1008,7 +1167,7 @@ function AccountCard({
               <Star className={cn("size-4", account.is_default && "fill-current text-amber-500")} />
               {account.is_default ? t("removeDefault") : t("setAsDefault")}
             </DropdownMenuItem>
-            {!isCash && (
+            {!isDefaultCash(account) && (
               <DropdownMenuItem onSelect={onArchive} disabled={saving} className="text-muted-foreground">
                 <Archive className="size-4" /> {t("archive")}
               </DropdownMenuItem>

@@ -5,6 +5,11 @@ import {
   currencyForCountry,
   detectCountryCode,
   detectDefaultCurrency,
+  getCurrencySymbol,
+  intlCurrencySymbol,
+  isSelectableCurrency,
+  minorUnits,
+  SELECTABLE_CURRENCY_LIST,
 } from "./currencies"
 
 describe("currencyForCountry", () => {
@@ -68,5 +73,72 @@ describe("detectDefaultCurrency", () => {
       resolvedOptions: () => ({ timeZone: "Europe/Rome" }),
     } as unknown as Intl.DateTimeFormat)
     expect(detectDefaultCurrency()).toBe("EUR")
+  })
+
+  it("never preselects a currency a new workspace can't use (MC-031)", () => {
+    vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
+      resolvedOptions: () => ({ timeZone: "Asia/Kuwait" }),
+    } as unknown as Intl.DateTimeFormat)
+    expect(detectDefaultCurrency()).toBe("USD")
+    expect(detectDefaultCurrency("INR")).toBe("INR")
+  })
+})
+
+describe("getCurrencySymbol", () => {
+  it("never gives another dollar the bare US \"$\" (MC-140)", () => {
+    expect(getCurrencySymbol("USD")).toBe("$")
+    expect(getCurrencySymbol("CAD")).toBe("CA$")
+    expect(getCurrencySymbol("AUD")).toBe("A$")
+    expect(getCurrencySymbol("MXN")).toBe("MX$")
+    // The curated table gave NIO the same "C$" as CAD.
+    expect(getCurrencySymbol("NIO")).not.toBe(getCurrencySymbol("CAD"))
+  })
+
+  it("keeps a currency's own sign when no other currency shares it", () => {
+    // Unchanged input prefixes for single-currency workspaces.
+    for (const [code, sign] of [["EUR", "€"], ["INR", "₹"], ["NGN", "₦"], ["ZAR", "R"], ["THB", "฿"], ["GBP", "£"], ["JPY", "¥"]]) {
+      expect(getCurrencySymbol(code)).toBe(sign)
+    }
+  })
+
+  it("replaces a shared sign with Intl's unambiguous one", () => {
+    expect(getCurrencySymbol("SEK")).toBe("SEK") // "kr" is also DKK, NOK, ISK
+    expect(getCurrencySymbol("CNY")).toBe("CN¥") // "¥" is also JPY
+  })
+
+  it("gives every known currency a different symbol", () => {
+    const symbols = CURRENCY_LIST.map((c) => getCurrencySymbol(c.code))
+    expect(new Set(symbols).size).toBe(symbols.length)
+  })
+
+  it("never throws on a malformed code", () => {
+    expect(getCurrencySymbol("")).toBe("")
+    expect(getCurrencySymbol("not-a-code")).toBe("not-a-code")
+  })
+})
+
+describe("intlCurrencySymbol", () => {
+  it("is the en-US sign formatMoney prints, or the ISO code", () => {
+    expect(intlCurrencySymbol("CAD")).toBe("CA$")
+    expect(intlCurrencySymbol("KWD")).toBe("KWD")
+    expect(intlCurrencySymbol("not-a-code")).toBe("not-a-code")
+  })
+})
+
+describe("minorUnits / SELECTABLE_CURRENCY_LIST (MC-031)", () => {
+  it("reads ISO 4217, not Intl's display digits", () => {
+    expect(minorUnits("JPY")).toBe(0)
+    expect(minorUnits("KWD")).toBe(3)
+    expect(minorUnits("IDR")).toBe(2) // Intl shows 0 — ISO says 2
+    expect(minorUnits("usd")).toBe(2)
+  })
+
+  it("offers no currency whose third decimal the money columns can't keep", () => {
+    for (const code of ["KWD", "BHD", "OMR", "JOD", "TND", "IQD", "LYD"]) {
+      expect(isSelectableCurrency(code)).toBe(false)
+      expect(SELECTABLE_CURRENCY_LIST.some((c) => c.code === code)).toBe(false)
+    }
+    expect(isSelectableCurrency("jpy")).toBe(true)
+    expect(SELECTABLE_CURRENCY_LIST.length).toBe(CURRENCY_LIST.length - 7)
   })
 })

@@ -363,6 +363,29 @@ export function allocation(overallLimit: number | null, limits: readonly number[
 }
 
 /**
+ * `allocation()` when budgets may be kept in different currencies (a budget
+ * keeps the one it was created in). Only the limits in `base` — the overall
+ * budget's currency — are added up against it; every other currency gets a
+ * total of its own, and while any exists what is left unallocated is unknown
+ * (null), never ₹ plus € (MC-080) — unless the base lines ALONE already exceed
+ * the overall limit: then the over-allocation is certain and `unallocated` is
+ * its lower bound. `parts` is the allocated figure as one amount per currency,
+ * base first, ready for `formatByCurrency`.
+ */
+export function allocationIn(
+  base: string,
+  overallLimit: number | null,
+  lines: readonly { currency: string; limit: number }[],
+): Allocation & { parts: { currency: string; amount: number }[] } {
+  const a = allocation(overallLimit, lines.filter((l) => l.currency === base).map((l) => l.limit))
+  const others = new Map<string, number>()
+  for (const l of lines) if (l.currency !== base && Number.isFinite(l.limit)) others.set(l.currency, round2((others.get(l.currency) ?? 0) + l.limit))
+  const rest = [...others].map(([currency, amount]) => ({ currency, amount })).sort((x, y) => x.currency.localeCompare(y.currency))
+  if (!rest.length) return { ...a, parts: [{ currency: base, amount: a.allocated }] }
+  return { ...a, unallocated: a.over ? a.unallocated : null, parts: [...(a.allocated !== 0 ? [{ currency: base, amount: a.allocated }] : []), ...rest] }
+}
+
+/**
  * The limit in effect at `t`, or `null` when the budget did not exist yet.
  *
  * The distinction matters: without it a budget created last week is painted

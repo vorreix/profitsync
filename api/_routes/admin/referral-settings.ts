@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { referralSettings } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { getReferralSettings } from "../../_lib/referral.js"
+import { isCurrencyCode, normalizeCurrencyCode } from "../../../src/lib/money.js"
 
 // ASCII control + Unicode bidi/zero-width/format chars — the banner renders to
 // every user, so strip anything that enables bidi/invisible-text spoofing.
@@ -30,7 +31,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (b.reward_type !== undefined && (b.reward_type === "percent" || b.reward_type === "fixed")) updates.rewardType = b.reward_type
     if (b.reward_percent !== undefined) updates.rewardPercent = String(num(b.reward_percent, 0, 100, 25))
     if (b.reward_amount !== undefined) updates.rewardAmount = String(num(b.reward_amount, 0, 1_000_000, 0))
-    if (b.reward_currency !== undefined && typeof b.reward_currency === "string") updates.rewardCurrency = b.reward_currency.slice(0, 3).toUpperCase()
+    // A real ISO code or a 400: 'US' or '' used to be stored and crashed every
+    // user's /referrals in Intl (MC-110). It applies to FUTURE fixed rewards only —
+    // each credited reward keeps its own currency, so a change relabels nothing.
+    if (b.reward_currency !== undefined) {
+      if (!isCurrencyCode(b.reward_currency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+      updates.rewardCurrency = normalizeCurrencyCode(b.reward_currency)
+    }
     if (b.holding_days !== undefined) updates.holdingDays = Math.round(num(b.holding_days, 0, 365, 14))
     if (b.min_payout !== undefined) updates.minPayout = String(num(b.min_payout, 0, 1_000_000, 0))
     if (b.banner_enabled !== undefined) updates.bannerEnabled = !!b.banner_enabled

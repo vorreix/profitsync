@@ -43,7 +43,7 @@ export function CountryCombobox({
       </PopoverTrigger>
       <PopoverContent container={container} className="w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] p-0 sm:w-[360px]" align="start">
         <Command filter={(v, s) => (matches(v, s) ? 1 : 0)}>
-          <CommandInput placeholder="Search country…" />
+          <CommandInput placeholder="Search country…" className="text-base sm:text-sm" />
           <CommandList className="max-h-64">
             <CommandEmpty>No country found.</CommandEmpty>
             <CommandGroup>
@@ -88,7 +88,7 @@ export function CountryCodeCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-[16rem] max-w-[calc(100vw-1.5rem)] p-0" align="start">
         <Command filter={(v, s) => (matches(v, s) ? 1 : 0)}>
-          <CommandInput placeholder="Search code…" />
+          <CommandInput placeholder="Search code…" className="text-base sm:text-sm" />
           <CommandList className="max-h-64">
             <CommandEmpty>No country found.</CommandEmpty>
             <CommandGroup>

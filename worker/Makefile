@@ -28,7 +28,7 @@ endef
 # ----------------------------------------------------------------------------
 
 .PHONY: up
-up: env ## Build (if needed) + start the worker stack, detached (+ registers the notification schedule)
+up: env ## Build (if needed) + start the worker stack, detached (+ registers the notification + FX schedules)
 	@echo "→ starting $(WORKER_PROJECT)..."
 	$(call compose, up -d --build)
 	@echo "✓ up — \`make logs\` to follow, \`make health\` to check"
@@ -51,7 +51,7 @@ restart: ## Restart just the worker service
 	$(call compose, restart worker)
 
 .PHONY: rebuild
-rebuild: ## Rebuild the image + recreate the containers (+ registers the notification schedule)
+rebuild: ## Rebuild the image + recreate the containers (+ registers the notification + FX schedules)
 	$(call compose, up -d --build --force-recreate)
 	@$(MAKE) --no-print-directory register
 
@@ -109,15 +109,24 @@ shell: ## Open a shell in the running worker container
 psql: ## Open psql on the worker's own queue database
 	$(call compose, exec postgres psql -U worker -d worker)
 
+# The same schedules as api/_lib/worker-schedules.ts (the admin panel's repair
+# + scripts/register-worker-schedules.ts) — change both together.
 .PHONY: register
-register: ## Register the notification cron schedule on the worker (retries while it boots)
+register: ## Register the cron schedules on the worker: notification sweep + daily FX refresh (retries while it boots)
 	@cd $(DEPLOY_DIR) && set -a && . ./.env && set +a && \
 	for i in 1 2 3 4 5 6 7 8 9 10; do \
 		if curl -fsS -X POST "http://localhost:$${WORKER_PORT:-8080}/v1/schedules" \
 			-H "Authorization: Bearer $$WORKER_API_TOKEN" -H 'Content-Type: application/json' \
 			-d '{"name":"notifications-dispatch","type":"app.trigger","cron":"0 * * * *","timezone":"UTC","payload":{"path":"/api/cron/notifications"}}' \
 			>/dev/null 2>&1; then \
-			echo "  ✓ notifications-dispatch registered (hourly reconcile sweep for scheduled broadcasts)"; exit 0; \
+			echo "  ✓ notifications-dispatch registered (hourly reconcile sweep for scheduled broadcasts)"; \
+			if curl -fsS -X POST "http://localhost:$${WORKER_PORT:-8080}/v1/schedules" \
+				-H "Authorization: Bearer $$WORKER_API_TOKEN" -H 'Content-Type: application/json' \
+				-d '{"name":"fx-refresh","type":"app.trigger","cron":"30 16 * * *","timezone":"UTC","payload":{"path":"/api/cron/fx"}}' \
+				>/dev/null 2>&1; then \
+				echo "  ✓ fx-refresh registered (daily 16:30 UTC, after the ECB publishes: today's rates + missing history)"; exit 0; \
+			fi; \
+			echo "  ✗ FAILED to register fx-refresh — exchange-rate history older than a month will NOT fill. Retry with 'make register'."; exit 1; \
 		fi; \
 		echo "  … worker not ready yet (attempt $$i/10), retrying in 3s"; sleep 3; \
 	done; \

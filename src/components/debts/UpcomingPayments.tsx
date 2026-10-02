@@ -2,13 +2,15 @@ import { useTranslation } from "react-i18next"
 import { CheckCircle2 } from "lucide-react"
 import type { Debt, DebtsOverview } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
+import { useCurrency } from "@/lib/currency-context"
 import { formatMonthYear, formatShortDate } from "@/lib/debt-format"
 import { cn } from "@/lib/utils"
 
 /**
  * The next three months of scheduled debt payments, grouped by month with a
- * required / paid / remaining header. Paid rows are recorded payments in that
- * calendar month; irregular debts have no schedule and are not shown here.
+ * required / paid / remaining header. A month's recorded payments are spread
+ * over its rows in date order (server side); a row is struck through once it is
+ * fully covered. Irregular debts have no schedule and are not shown here.
  */
 export function UpcomingPayments({ upcoming, debts, onOpen, balancesVisible = true }: {
   upcoming: DebtsOverview["upcoming"]
@@ -17,6 +19,8 @@ export function UpcomingPayments({ upcoming, debts, onOpen, balancesVisible = tr
   balancesVisible?: boolean
 }) {
   const { t } = useTranslation("debts")
+  // A row with no currency (a debt predating currency tagging) is in the workspace's, never a hard-coded one (MC-141).
+  const { currency: fallback } = useCurrency()
   const byId = new Map(debts.map((d) => [d.id, d]))
   const months = new Map<string, DebtsOverview["upcoming"]>()
   for (const u of upcoming) {
@@ -29,10 +33,12 @@ export function UpcomingPayments({ upcoming, debts, onOpen, balancesVisible = tr
   return (
     <div className="space-y-4">
       {[...months].map(([key, rows]) => {
-        // Totals per currency, since debts keep their native currency.
+        // Totals per currency, since debts keep their native currency. Each
+        // row already carries its share of the month's payments (never more
+        // than its own amount), so the paid total is never overstated.
         const totals = new Map<string, { required: number; paid: number }>()
         for (const r of rows) {
-          const cur = byId.get(r.debt_id)?.currency ?? ""
+          const cur = r.currency || fallback
           const t0 = totals.get(cur) ?? { required: 0, paid: 0 }
           totals.set(cur, { required: t0.required + r.amount, paid: t0.paid + Math.min(r.amount, r.paid_amount) })
         }
@@ -43,7 +49,7 @@ export function UpcomingPayments({ upcoming, debts, onOpen, balancesVisible = tr
               <p className="text-xs text-muted-foreground tabular-nums">
                 {[...totals].map(([cur, v]) => (
                   <span key={cur} className="ml-3 first:ml-0">
-                    {formatMoney(v.required, cur || "USD", balancesVisible)} · {t("paidMark")} {formatMoney(v.paid, cur || "USD", balancesVisible)} · {t("remaining")} {formatMoney(Math.max(0, v.required - v.paid), cur || "USD", balancesVisible)}
+                    {formatMoney(v.required, cur, balancesVisible)} · {t("paidMark")} {formatMoney(v.paid, cur, balancesVisible)} · {t("remaining")} {formatMoney(Math.max(0, v.required - v.paid), cur, balancesVisible)}
                   </span>
                 ))}
               </p>
@@ -57,7 +63,7 @@ export function UpcomingPayments({ upcoming, debts, onOpen, balancesVisible = tr
                       <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">{formatShortDate(r.date)}</span>
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{d?.name ?? ""}</span>
                       {r.paid && <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"><CheckCircle2 className="size-3.5" aria-hidden /> {t("paidMark")}</span>}
-                      <span className={cn("shrink-0 text-sm font-semibold tabular-nums", r.paid && "text-muted-foreground line-through")}>{formatMoney(r.amount, d?.currency ?? "USD", balancesVisible)}</span>
+                      <span className={cn("shrink-0 text-sm font-semibold tabular-nums", r.paid && "text-muted-foreground line-through")}>{formatMoney(r.amount, r.currency || fallback, balancesVisible)}</span>
                     </button>
                   </li>
                 )

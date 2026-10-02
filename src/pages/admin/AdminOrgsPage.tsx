@@ -43,6 +43,8 @@ type AdminOrg = {
   is_personal: boolean
   account_type: string | null
   currency: string
+  /** What every figure in the workspace is reported in (the API already folds in the legacy column). */
+  reporting_currency: string | null
   created_at: string
   updated_at: string
   owner_email: string | null
@@ -414,7 +416,7 @@ export function AdminOrgsPage() {
                             <p className="text-sm font-medium">{o.name}</p>
                             {o.is_personal && <Badge variant="outline" className="text-[10px]">Personal</Badge>}
                           </div>
-                          <p className="text-xs text-muted-foreground">{o.slug}</p>
+                          <p className="text-xs text-muted-foreground">{o.slug} · {o.reporting_currency ?? o.currency}</p>
                         </div>
                       </div>
                     </td>
@@ -458,7 +460,7 @@ export function AdminOrgsPage() {
                         size="icon"
                         variant="ghost"
                         aria-label="Rename"
-                        onClick={() => { setEditTarget(o); setEditName(o.name); setEditCurrency(o.currency || "USD") }}
+                        onClick={() => { setEditTarget(o); setEditName(o.name); setEditCurrency(o.reporting_currency || o.currency || "USD") }}
                       >
                         <Pencil className="size-3.5" />
                       </Button>

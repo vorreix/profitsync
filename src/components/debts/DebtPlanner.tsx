@@ -5,14 +5,14 @@ import type { Debt } from "@/lib/types"
 import { fromCents, monthlyEquivalent, toCents } from "@/lib/debt-math"
 import { affordability, comparePlans, debtPaymentRatio, simulatePlan, STRATEGIES, type PlannerDebt, type PlanResult, type Strategy } from "@/lib/debt-planner"
 import { formatMoney } from "@/lib/wealth"
+import { useOrg } from "@/lib/org-context"
 import { monthsFromNow } from "@/lib/debt-format"
 import { cn } from "@/lib/utils"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-
-const PLAN_KEY = "ps_debt_plan"
 
 type Saved = { strategy: Strategy; extra: number; lump: number; order: string[] }
 
@@ -24,30 +24,117 @@ type Saved = { strategy: Strategy; extra: number; lump: number; order: string[] 
  * the scheduled payments the screen switches to STABILISATION: what is due,
  * what is short — no strategy recommendation.
  */
-export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, balancesVisible = true }: {
+export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, incomeExcludedCount = 0, balancesVisible = true }: {
   debts: Debt[]
+  /** The overview's currency — the one `averageMonthlyIncome` was converted into. */
   currency: string
   today: string
   averageMonthlyIncome: number
+  /** Income rows the server could not convert (no rate) and left out of the average. */
+  incomeExcludedCount?: number
   balancesVisible?: boolean
+}) {
+  const { t } = useTranslation("debts")
+  const { activeOrg } = useOrg()
+  // Open loans only: a settled one has nothing left to plan.
+  const open = useMemo(() => debts.filter((d) => d.balance > 0 && (d.lifecycle === "active" || d.lifecycle === "paused")), [debts])
+  // Debts in different currencies cannot be added up, so each currency gets a
+  // plan of its own (MC-095) — before, everything outside the overview's
+  // currency was dropped, and after a workspace currency change that was every
+  // debt. The overview's currency comes first (income is measured in it), then
+  // the one with the most debts.
+  const currencies = useMemo(() => {
+    const count = new Map<string, number>()
+    for (const d of open) count.set(d.currency || currency, (count.get(d.currency || currency) ?? 0) + 1)
+    return [...count].sort((a, b) => Number(b[0] === currency) - Number(a[0] === currency) || b[1] - a[1]).map(([c]) => c)
+  }, [open, currency])
+  const [picked, setPicked] = useState<string | null>(null)
+  const planCurrency = picked && currencies.includes(picked) ? picked : (currencies[0] ?? currency)
+  const storageKey = `ps_debt_plan_${activeOrg?.id ?? ""}_${planCurrency}`
+
+  if (open.length === 0) {
+    return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("noPlanDebts")}</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{t("planIntro")}</p>
+      {currencies.length > 1 && (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("planCurrency")}>
+            {currencies.map((c) => (
+              <button key={c} type="button" role="radio" aria-checked={c === planCurrency} onClick={() => setPicked(c)}
+                className={cn(
+                  "pressable ios-tap min-h-11 min-w-16 rounded-xl border px-4 text-sm font-semibold transition-colors",
+                  c === planCurrency ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40",
+                )}>
+                {c}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">{t("planPerCurrency")}</p>
+        </div>
+      )}
+      {/* Remounted per workspace and currency: the extra and the lump sum are
+          amounts IN that currency, so each plan keeps its own (MC-143) — one
+          shared key carried ₹5,000 a month into a USD workspace as $5,000. */}
+      <CurrencyPlan
+        key={storageKey}
+        storageKey={storageKey}
+        inheritsLegacy={planCurrency === currency}
+        debts={open.filter((d) => (d.currency || currency) === planCurrency)}
+        currency={planCurrency}
+        today={today}
+        // Income is in the overview's currency; another plan has nothing to set it against.
+        averageMonthlyIncome={planCurrency === currency ? averageMonthlyIncome : null}
+        incomeExcludedCount={planCurrency === currency ? incomeExcludedCount : 0}
+        balancesVisible={balancesVisible}
+      />
+    </div>
+  )
+}
+
+const LEGACY_PLAN_KEY = "ps_debt_plan"
+
+/** One currency's plan — every amount on it is in `currency`. */
+function CurrencyPlan({ storageKey, inheritsLegacy, debts, currency, today, averageMonthlyIncome, incomeExcludedCount, balancesVisible }: {
+  storageKey: string
+  /** The overview currency's plan, which may adopt the plan saved before plans were per workspace and currency. */
+  inheritsLegacy: boolean
+  /** Open debts in `currency`. */
+  debts: Debt[]
+  currency: string
+  today: string
+  averageMonthlyIncome: number | null
+  incomeExcludedCount: number
+  balancesVisible: boolean
 }) {
   const { t } = useTranslation("debts")
   const money = (cents: number) => formatMoney(fromCents(cents), currency, balancesVisible)
 
-  // Only debts in the workspace currency can be summed; others are listed as excluded.
   const plannable = useMemo<PlannerDebt[]>(
-    () => debts
-      .filter((d) => d.currency === currency && d.balance > 0 && (d.lifecycle === "active" || d.lifecycle === "paused"))
-      .map((d) => ({ id: d.id, name: d.name, balance: toCents(d.balance), annualRatePct: d.annual_rate_pct, minPayment: monthlyEquivalent(toCents(d.payment_amount ?? 0), d.payment_frequency) })),
-    [debts, currency],
+    () => debts.map((d) => ({ id: d.id, name: d.name, balance: toCents(d.balance), annualRatePct: d.annual_rate_pct, minPayment: monthlyEquivalent(toCents(d.payment_amount ?? 0), d.payment_frequency) })),
+    [debts],
   )
-  const excluded = debts.filter((d) => d.currency !== currency && d.balance > 0)
   const required = plannable.reduce((s, d) => s + d.minPayment, 0)
 
   const [saved, setSaved] = useState<Saved>(() => {
-    try { return { strategy: "avalanche", extra: 0, lump: 0, order: [], ...(JSON.parse(localStorage.getItem(PLAN_KEY) ?? "{}") as Partial<Saved>) } } catch { return { strategy: "avalanche", extra: 0, lump: 0, order: [] } }
+    try {
+      // The plan used to live under one global key. The first overview-currency
+      // plan opened adopts it (the effect below then retires it, so no second
+      // workspace does): nobody loses their strategy, extra and order.
+      const raw = localStorage.getItem(storageKey) ?? (inheritsLegacy ? localStorage.getItem(LEGACY_PLAN_KEY) : null)
+      return { strategy: "avalanche", extra: 0, lump: 0, order: [], ...(JSON.parse(raw ?? "{}") as Partial<Saved>) }
+    } catch {
+      return { strategy: "avalanche", extra: 0, lump: 0, order: [] }
+    }
   })
-  useEffect(() => { try { localStorage.setItem(PLAN_KEY, JSON.stringify(saved)) } catch { /* private mode */ } }, [saved])
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(saved))
+      if (inheritsLegacy) localStorage.removeItem(LEGACY_PLAN_KEY)
+    } catch { /* private mode */ }
+  }, [storageKey, saved, inheritsLegacy])
   const [budgetText, setBudgetText] = useState(() => String(fromCents(required + toCents(saved.extra))))
   useEffect(() => { setBudgetText(String(fromCents(required + toCents(saved.extra)))) }, [required]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -67,12 +154,8 @@ export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, bala
     return saved.strategy === "minimum" ? comparison!.baseline : simulatePlan({ debts: plannable, strategy: saved.strategy, extraMonthly: extra, customOrder: order, lumpSumNow: lump })
   }, [plannable, saved.strategy, extra, order, lump, comparison])
 
-  const ratio = debtPaymentRatio(required, toCents(averageMonthlyIncome))
+  const ratio = averageMonthlyIncome == null ? null : debtPaymentRatio(required, toCents(averageMonthlyIncome))
   const sliderMax = Math.max(required * 2, toCents(500), budget + toCents(100))
-
-  if (plannable.length === 0 && excluded.length === 0) {
-    return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("noPlanDebts")}</div>
-  }
 
   const monthsLabel = (m: number | null) => (m == null ? t("never") : monthsFromNow(m, today))
   const debtName = (id: string) => plannable.find((d) => d.id === id)?.name ?? ""
@@ -83,8 +166,6 @@ export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, bala
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{t("planIntro")}</p>
-
       {/* Budget */}
       <div className="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-3">
         <div>
@@ -105,13 +186,17 @@ export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, bala
         </div>
       </div>
 
-      {ratio != null && (
+      {ratio != null ? (
         <div className="rounded-2xl border bg-card p-4">
           <p className="text-xs text-muted-foreground">{t("pressure")}</p>
           <p className="text-xl font-bold tabular-nums">{ratio}%</p>
           <p className="text-sm">{t("pressureExplain", { ratio: Math.round(ratio) })}</p>
           <p className="text-xs text-muted-foreground">{t("pressureBasis")}</p>
+          {/* Income with no exchange rate is left out, so the ratio reads high — say so. */}
+          <FxExcludedNotice count={incomeExcludedCount} className="mt-1" />
         </div>
+      ) : averageMonthlyIncome != null && (
+        <FxExcludedNotice count={incomeExcludedCount} />
       )}
 
       {afford.mode === "stabilize" ? (
@@ -243,11 +328,6 @@ export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, bala
         </>
       )}
 
-      {excluded.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {excluded.map((d) => `${d.name} (${d.currency})`).join(", ")} — {t("receivablesHint")}
-        </p>
-      )}
     </div>
   )
 }

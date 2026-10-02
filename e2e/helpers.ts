@@ -2,6 +2,8 @@ import { expect, type Page } from "@playwright/test"
 
 /** Everything the suite creates is namespaced so cleanup is unambiguous. */
 export const E2E_PREFIX = "e2e-ux4"
+/** Throwaway workspaces multi-currency.spec.ts makes per run (auth.setup.ts sweeps leftovers). */
+export const MC_ORG_PREFIX = `${E2E_PREFIX}-mc-org`
 
 export const E2E_EMAIL = process.env.E2E_CLERK_EMAIL || "e2e+clerk_test@profitsync.dev"
 

@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { formatMoney } from "@/lib/wealth"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -137,12 +138,7 @@ function discountedUsd(priceUsd: string, pct: number): string {
 }
 
 function money(usd: string, currency: string): string {
-  const n = parseFloat(usd || "0")
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
-  } catch {
-    return `$${n.toFixed(2)}`
-  }
+  return formatMoney(parseFloat(usd || "0"), currency)
 }
 
 /** Placeholder hints for the per-limit display strings. */

@@ -7,6 +7,7 @@ import { accountBalanceLabel, accountDisplayName, accountSpendableLabel, currenc
 import { cardDisplayName, maskedTail, resolveCardPalette } from "@/lib/cards"
 import { CREDIT_CARD_TYPE, isLiabilityType } from "@/lib/credit-card"
 import { todayIso } from "@/lib/recurring"
+import { amountInputProps } from "@/lib/money"
 import { useCards } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { NetworkMark } from "@/components/cards/NetworkMark"
@@ -19,7 +20,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 // One leg of a transaction: the account the money lands on and, when a card
 // paid, which card (attribution only — the server forces account_id to the
 // card's own account). `card_id` null/absent = paid straight from the account.
-export type Allocation = { account_id: string; card_id?: string | null; amount: string }
+// `currency_code` = the currency `amount` is in when the caller seeded it from a
+// SAVED row (that row's own currency_code). Absent on anything typed here, whose
+// amount is in its account's currency.
+export type Allocation = { account_id: string; card_id?: string | null; amount: string; currency_code?: string | null }
 
 /**
  * Smoothly expands/collapses to auto height via the grid `0fr → 1fr` trick — the
@@ -60,6 +64,18 @@ function Collapse({ open, children, className }: { open: boolean; children: Reac
  * `max={1}` (edit) forces single-pay and hides the split toggle.
  * Allocations are the single source of truth — one per selected option.
  */
+/**
+ * The currency an option's money is actually in — its account's native one.
+ *
+ * Every figure this picker shows belongs to ONE account, so it must be
+ * formatted in that account's currency. Using the workspace's for all of them
+ * printed a rupee balance as "$12,000.00" and put a "$" in front of an amount
+ * that was about to be recorded in rupees.
+ */
+function optionCurrency(option: PayOption, fallback: string): string {
+  return (option.kind === "card" ? option.account?.currency_code : option.account.currency_code) || fallback
+}
+
 export function AccountSelector({
   accounts,
   allocations,
@@ -82,7 +98,6 @@ export function AccountSelector({
   const { t } = useTranslation("transactions")
   const { balancesVisible } = useBalancePrivacy()
   const { cards } = useCards()
-  const symbol = currencySymbol(currency)
   const single = max === 1
   const [split, setSplit] = useState(() => !single && allocations.length > 1)
   const [expanded, setExpanded] = useState(false)
@@ -119,11 +134,27 @@ export function AccountSelector({
     return rotating.find((o) => o.kind === "account" && o.account.is_default)?.key ?? rotating[0]?.key ?? ""
   })
 
+  // Which currency is this entry in? The first selected account decides, and in
+  // split mode every other account must match it — one purchase paid from
+  // several accounts is one amount, and amounts in different currencies cannot
+  // be added. Nothing is restricted while nothing is selected.
+  const currencyOfKey = (key: string) => {
+    const opt = options.all.find((o) => o.key === key)
+    return opt ? optionCurrency(opt, currency) : currency
+  }
+  const activeCurrency = allocations.length > 0 ? currencyOfKey(keyOf(allocations[0])) : null
+  // The currency an allocation's AMOUNT is in: the saved row's own when it was
+  // seeded from one, else its account's. null = unknown — a row on an account
+  // this picker does not offer (an archived one) with no stored currency.
+  const amountCurrencyOf = (a: Allocation): string | null =>
+    a.currency_code || (options.byKey.has(keyOf(a)) ? currencyOfKey(keyOf(a)) : null)
+  const sole = allocations[0]
+  const entryCurrency = (sole && amountCurrencyOf(sole)) || activeCurrency || currency
+  const entrySymbol = currencySymbol(entryCurrency)
+
   const total = allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const selectedCount = allocations.length
   const incomplete = allocations.some((a) => !(Number(a.amount) > 0))
-
-  const sole = allocations[0]
 
   // Preselect order: the user's chosen default account → Cash → first.
   const fallback = () =>
@@ -142,16 +173,45 @@ export function AccountSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondaryKey, rotating.length])
 
-  const selectSingle = (o: PayOption) => onChange([{ ...optionAllocation(o), amount: sole?.amount ?? "" }])
-  const setSingleAmount = (amount: string) =>
+  // Set when switching account cleared the amount because the new one is in
+  // another currency — says why the field is empty until something is typed.
+  const [reaskCurrency, setReaskCurrency] = useState<string | null>(null)
+  // A saved row seeded onto an account in ANOTHER currency (a row with no
+  // account opens on the default one) would re-save its number in that
+  // currency on any edit, even a category fix. Same rule as a tap: once the
+  // account is known, clear the amount and ask for it again.
+  useEffect(() => {
+    if (allocations.length !== 1 || !sole?.currency_code || !sole.amount || !options.byKey.has(keyOf(sole))) return
+    const own = currencyOfKey(keyOf(sole))
+    if (own.toUpperCase() === sole.currency_code.toUpperCase()) return
+    setReaskCurrency(own)
+    onChange([{ account_id: sole.account_id, card_id: sole.card_id ?? null, amount: "" }])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, sole?.currency_code, sole?.amount])
+  // Another currency changes what the typed number MEANS — €50 is not ₹50 — so
+  // the amount is cleared and asked for again in the new currency rather than
+  // carried over (the server refuses a currency change that does not restate
+  // it, but every edit dialog resends the amount, so this is the real guard).
+  // Compared with the AMOUNT's currency, not the selected account's: they
+  // differ for a row seeded onto the default account, and an unknown one
+  // counts as a change.
+  const selectSingle = (o: PayOption) => {
+    const next = optionCurrency(o, currency)
+    const changed = !!sole && amountCurrencyOf(sole)?.toUpperCase() !== next.toUpperCase()
+    if (changed && (!!sole.amount || !!reaskCurrency)) setReaskCurrency(next)
+    onChange([{ ...optionAllocation(o), amount: changed ? "" : sole?.amount ?? "" }])
+  }
+  const setSingleAmount = (amount: string) => {
+    setReaskCurrency(null)
     onChange([{ ...(sole ? { account_id: sole.account_id, card_id: sole.card_id ?? null } : fallbackAlloc()), amount }])
+  }
 
   const toggleSplit = (o: PayOption) =>
     isSelected(o.key)
       ? onChange(allocations.filter((a) => keyOf(a) !== o.key))
       : onChange([...allocations, { ...optionAllocation(o), amount: "" }])
   const setAmount = (key: string, amount: string) =>
-    onChange(allocations.map((a) => (keyOf(a) === key ? { ...a, amount } : a)))
+    onChange(allocations.map((a) => (keyOf(a) === key ? { account_id: a.account_id, card_id: a.card_id ?? null, amount } : a)))
 
   const enterSplit = () => setSplit(true)
   const exitSplit = () => {
@@ -224,21 +284,27 @@ export function AccountSelector({
   const extraCards = options.cards.filter((o) => !inPrimary(o))
   const hiddenCount = extraAccounts.length + extraCards.length
 
-  const renderTile = (o: PayOption, mode: "single" | "split") => (
+  const renderTile = (o: PayOption, mode: "single" | "split") => {
+    const own = optionCurrency(o, currency)
+    // In a split, an account in another currency cannot join this entry.
+    const wrongCurrency = mode === "split" && !!activeCurrency && own !== activeCurrency && !isSelected(o.key)
+    return (
     <PayTile
       key={o.key}
       option={o}
-      currency={currency}
-      symbol={symbol}
+      currency={own}
+      symbol={currencySymbol(own)}
       balancesVisible={balancesVisible}
       split={mode === "split"}
-      disabled={disabled}
+      disabled={disabled || wrongCurrency}
+      note={wrongCurrency ? t("splitSameCurrency", { currency: activeCurrency }) : null}
       selected={mode === "split" ? isSelected(o.key) : (sole ? keyOf(sole) : "") === o.key}
       amount={amountFor(o.key)}
       onPrimary={mode === "split" ? toggleSplit : selectSingle}
       onAmount={(amount) => setAmount(o.key, amount)}
     />
-  )
+    )
+  }
 
   const cardsHeading = (
     <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("cardsHeading")}</p>
@@ -251,7 +317,10 @@ export function AccountSelector({
       {/* ── SINGLE-PAY VIEW ─────────────────────────────────────────────── */}
       <Collapse open={!split}>
         <div className="space-y-2">
-          <MoneyInput symbol={symbol} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
+          <MoneyInput symbol={entrySymbol} currency={entryCurrency} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
+          {reaskCurrency && (
+            <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t("amountReenterCurrency", { currency: reaskCurrency })}</p>
+          )}
           <div className={cn("grid gap-2", primary.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
             {primary.map((o) => renderTile(o, "single"))}
           </div>
@@ -313,7 +382,7 @@ export function AccountSelector({
                 {selectedCount > 0 ? t("splitAcross", { count: selectedCount }) : t("selectAtLeastOneAccount")}
               </span>
               {/* The user's own typed total — never masked by privacy mode (that hides balances). */}
-              <span className="font-semibold tabular-nums">{formatMoney(total, currency)}</span>
+              <span className="font-semibold tabular-nums">{formatMoney(total, entryCurrency)}</span>
             </div>
             {selectedCount > 0 && incomplete && (
               <p className="text-xs text-muted-foreground">{t("enterAmountForEachAccount")}</p>
@@ -370,9 +439,10 @@ function cardSubline(card: Card, account: WealthAccount | null, currency: string
 }
 
 function PayTile({
-  option, currency, symbol, balancesVisible, split, selected, amount, disabled, onPrimary, onAmount,
+  option, currency, symbol, balancesVisible, split, selected, amount, disabled, note = null, onPrimary, onAmount,
 }: {
   option: PayOption
+  /** The ACCOUNT's own currency — every figure on this tile is in it. */
   currency: string
   symbol: string
   balancesVisible: boolean
@@ -380,6 +450,8 @@ function PayTile({
   selected: boolean
   amount: string
   disabled: boolean
+  /** Why this tile cannot be picked right now (a split is one currency). */
+  note?: string | null
   onPrimary: (o: PayOption) => void
   onAmount: (amount: string) => void
 }) {
@@ -409,6 +481,7 @@ function PayTile({
       className={cn(
         "flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors",
         selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/50",
+        note && "opacity-55",
       )}
     >
       <button
@@ -445,6 +518,8 @@ function PayTile({
             )}
           </span>
           <span className="block truncate text-xs text-muted-foreground tabular-nums">{subline}</span>
+          {/* Why this one is greyed out: a split has to stay in one currency. */}
+          {note && <span className="block truncate text-[11px] text-muted-foreground/80">{note}</span>}
         </span>
         {split && !selected && (
           <span className="flex size-5 shrink-0 items-center justify-center rounded-full border text-muted-foreground">
@@ -455,6 +530,7 @@ function PayTile({
       {split && selected && (
         <MoneyInput
           symbol={symbol}
+          currency={currency}
           value={amount}
           onChange={onAmount}
           autoFocus={amount === ""}
@@ -482,9 +558,11 @@ function CardMini({ card }: { card: Card }) {
 }
 
 function MoneyInput({
-  symbol, value, onChange, autoFocus, invalid, className = "", size = "md",
+  symbol, currency, value, onChange, autoFocus, invalid, className = "", size = "md",
 }: {
   symbol: string
+  /** The currency the amount is in — a yen field gets no decimal key (MC-031). */
+  currency: string
   value: string
   onChange: (v: string) => void
   autoFocus?: boolean
@@ -495,20 +573,22 @@ function MoneyInput({
   const lg = size === "lg"
   return (
     <div className={cn("relative", className)}>
-      <span className={cn("pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground", lg ? "left-3 text-base" : "left-2.5 text-sm")}>
+      <span className={cn("pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground", lg ? "start-3 text-base" : "start-2.5 text-sm")}>
         {symbol}
       </span>
       <Input
         type="number"
-        inputMode="decimal"
+        {...amountInputProps(currency)}
         min="0"
-        step="0.01"
-        placeholder="0.00"
         autoFocus={autoFocus}
         aria-invalid={invalid ? true : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={lg ? "h-11 pl-8 text-right text-lg font-semibold tabular-nums" : "h-9 pl-7 text-right tabular-nums"}
+        // The prefix runs from "$" to "F CFA": the padding follows its length (MC-140).
+        // `ch` is measured in the INPUT's font, so md:text-lg keeps the base
+        // md:text-sm from shrinking it below the prefix's own size on desktop.
+        style={{ paddingInlineStart: `calc(${symbol.length}ch + ${lg ? "1.25rem" : "1rem"})` }}
+        className={lg ? "h-11 text-right text-lg md:text-lg font-semibold tabular-nums" : "h-9 text-right tabular-nums"}
       />
     </div>
   )

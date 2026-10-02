@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { invoiceStatusForPayment, invoiceValuesFromPayment } from "./invoice-map"
-import type { DodoPayment } from "./dodo"
+import { fromDodoMinor, type DodoPayment } from "./dodo"
 
 describe("invoiceStatusForPayment", () => {
   it("maps succeeded → paid", () => {
@@ -69,5 +69,23 @@ describe("invoiceValuesFromPayment", () => {
     expect(v.currency).toBe("USD")
     // Falls back to "now" when created_at is empty (not NaN).
     expect(Number.isNaN(v.issuedAt.getTime())).toBe(false)
+  })
+})
+
+describe("Dodo amounts are in the currency's smallest unit, not always cents", () => {
+  it("fromDodoMinor divides by 10^minorUnits: JPY 0, USD 2, KWD 3", () => {
+    expect(fromDodoMinor(1500, "JPY")).toBe(1500)
+    expect(fromDodoMinor(499, "USD")).toBe(4.99)
+    expect(fromDodoMinor(3010, "KWD")).toBe(3.01)
+    expect(fromDodoMinor(3015, "kwd")).toBe(3.015)
+    expect(fromDodoMinor(undefined, "USD")).toBe(0)
+  })
+
+  it("stores a ¥1,500 charge as 1500 and a 3.010 KWD charge as 3.01, not 15 and 30.1", () => {
+    const base = { status: "succeeded", created_at: "2026-06-01T00:00:00.000Z", subscription_id: "sub_abc" }
+    const ctx = { organizationId: "org-1", subscriptionId: "sub-row-1" }
+    expect(invoiceValuesFromPayment({ ...base, payment_id: "p1", total_amount: 1500, currency: "JPY" }, ctx).amount).toBe("1500")
+    expect(invoiceValuesFromPayment({ ...base, payment_id: "p2", total_amount: 3010, currency: "KWD" }, ctx).amount).toBe("3.01")
+    expect(invoiceValuesFromPayment({ ...base, payment_id: "p3", total_amount: 499, currency: "USD" }, ctx).amount).toBe("4.99")
   })
 })

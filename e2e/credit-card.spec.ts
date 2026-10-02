@@ -129,15 +129,21 @@ const cardTx = async (page: Page, id: string) =>
 async function cleanup(page: Page) {
   const accs = await accounts(page)
   console.log(`[cleanup] accounts: ${accs.map((a) => a.nickname || a.bank_name).join(", ")}`)
-  for (const a of accs.filter((x) => x.nickname === CARD_NAME)) {
+  // An archived one is a previous run's card, already cleaned (see below).
+  for (const a of accs.filter((x) => x.nickname === CARD_NAME && !x.archived_at)) {
     const { data } = await cardTx(page, a.id)
     if (data.length) {
       const bd = await api(page, "POST", "/api/transactions/bulk-delete", { ids: data.map((t) => t.id) })
       console.log(`[cleanup] bulk-delete ${data.length} -> ${bd.status}`)
     }
     const clear = await api(page, "POST", "/api/trash/clear")
+    // The card's system debt row (Opening Balance) survives bulk delete and
+    // Empty trash (MC-054), so its debt does too and the DELETE would 409
+    // card_has_debt. Zeroing the debt posts a Balance Adjustment; the DELETE
+    // then archives the card (it has history) instead.
+    const zero = await api(page, "PATCH", `/api/wealth/accounts/${a.id}`, { current_debt: 0 })
     const del = await api(page, "DELETE", `/api/wealth/accounts/${a.id}`)
-    console.log(`[cleanup] trash/clear -> ${clear.status}, delete card -> ${del.status}`)
+    console.log(`[cleanup] trash/clear -> ${clear.status}, zero debt -> ${zero.status}, delete card -> ${del.status}`)
   }
 }
 
@@ -149,7 +155,11 @@ function knownStatementDates(): { closing: string; due: string } {
   const m = now.getUTCMonth() + 1
   const iso = (yy: number, mm: number, d: number) => `${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`
   const closingMonth = now.getUTCDate() > 1 ? { y, m } : m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 }
-  return { closing: iso(closingMonth.y, closingMonth.m, 1), due: iso(closingMonth.y, closingMonth.m, 15) }
+  // Due on the 15th that has NOT passed yet. On the 1st the statement above is
+  // last month's, and its own 15th is already behind us — every "not paid yet"
+  // assertion in this spec would then read "overdue" one day a month.
+  const dueMonth = closingMonth.m === m ? closingMonth : { y, m }
+  return { closing: iso(closingMonth.y, closingMonth.m, 1), due: iso(dueMonth.y, dueMonth.m, 15) }
 }
 
 test.describe.serial("Credit cards", () => {

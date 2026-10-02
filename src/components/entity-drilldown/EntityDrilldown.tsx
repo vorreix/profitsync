@@ -6,6 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, FileText, User, ChevronRight } from "lucid
 import { apiGet } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import type { DrilldownItem, DrilldownSort } from "@/lib/types"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -190,13 +191,16 @@ export function EntityDrilldown({ open, onClose, title, endpoint, query, typeOpt
                   >
                     <EntityIcon item={item} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className="text-sm font-medium truncate">
+                        {item.entity_type === "transaction" ? ledgerDescription({ description: item.title, category: item.category, kind: item.tx_kind }, t) : item.title}
+                      </p>
                       {item.subtitle && <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>}
                     </div>
                     <div className="shrink-0 text-right">
                       {item.amount != null && item.tx_type && (
                         <p className={`text-sm font-semibold tabular-nums ${item.tx_type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                          {item.tx_type === "incoming" ? "+" : "-"}{formatMoney(Math.abs(Number(item.amount)), currency)}
+                          {/* In the row's OWN currency, not the workspace's (MC-051). */}
+                          {item.tx_type === "incoming" ? "+" : "-"}{formatMoney(Math.abs(Number(item.amount)), item.currency_code || currency)}
                         </p>
                       )}
                       {item.date && <p className="text-[11px] text-muted-foreground">{formatDate(item.date)}</p>}

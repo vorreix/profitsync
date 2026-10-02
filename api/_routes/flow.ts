@@ -5,11 +5,18 @@ import { clients, organizations, transactions, wealthAccounts } from "../../src/
 import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
-import { expenseSumSql, incomeSumSql, pnlKindFilter } from "../_lib/tx-sql.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql, withFx } from "../_lib/tx-sql.js"
+import { buildWealthSummary } from "../_lib/wealth-summary.js"
 
 // SQL for "the account's display name" — reused to label leaves with the
 // account the money moved through (to/from).
 const accountLabelSql = sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), nullif(${wealthAccounts.bankName}, ''))`
+// The category a row is grouped under. No category ('' or NULL — the column is
+// nullable) is a NULL key: the client names that bucket by its key, in the
+// reader's language (money-flow.ts groupLabel), and a real category called
+// "Uncategorized" stays its own.
+const categoryKeySql = sql<string | null>`nullif(${transactions.category}, '')`
 
 const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const fmt = (d: Date) => d.toISOString().slice(0, 10)
@@ -73,6 +80,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Recurring occurrences due in range must exist before we aggregate.
   await materializeDueRecurring(orgId)
+  // Every figure below is in the workspace's reporting currency: each row is
+  // converted at its own date, and the consolidated balance IS /wealth's net
+  // worth (buildWealthSummary — one valuation path, MC-100), so it also leaves
+  // out settled debts (paid off / refinanced / written off) exactly as net
+  // worth does — intentional, not a lost balance (MC-FL01). Rows and accounts
+  // with no rate are left out and COUNTED (`excluded_count`,
+  // `balance_excluded_count`), never silently summed raw.
+  const reporting = await reportingCurrencyFor(orgId)
+  const orgRates = await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
 
   const q = req.query as Record<string, string | string[] | undefined>
   const personal = isPersonalAccount(ctx)
@@ -105,16 +121,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   ]
-  if (categories.length) {
-    conds.push(sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') in (${sql.join(categories.map((c) => sql`${c}`), sql`, `)})`)
-  }
+  if (categories.length) conds.push(inArray(transactions.category, categories))
   if (clientIds.length) conds.push(inArray(transactions.clientId, clientIds))
   if (accountIds.length) conds.push(inArray(transactions.wealthAccountId, accountIds))
   const where = and(...conds)
 
-  // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never income.
-  const incomeSum = incomeSumSql
-  const expenseSum = expenseSumSql
+  // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never
+  // income — converted into the reporting currency at each row's date, through
+  // rates looked up once per (currency, day) of the range when the workspace
+  // holds a foreign currency (MC-167; tx-sql.ts `fxFor`). Every aggregate below
+  // must go through `withFx(…, fx)`; the leaf lists convert their few rows
+  // directly (reportingAmountSql(reporting)).
+  const fx = fxFor(reporting, where, orgRates)
+  const incomeSum = incomeSumSqlIn(fx)
+  const expenseSum = expenseSumSqlIn(fx)
+  const excludedExpr = missingRateCountSql(fx)
   // Count LOGICAL transactions: a split (shared group_id) counts once, matching
   // how the canvas collapses its legs into a single node.
   const countExpr = sql<number>`count(distinct coalesce(${transactions.groupId}::text, ${transactions.id}::text))::int`
@@ -143,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else if (groupBy === "client") {
       extra = eq(transactions.clientId, key)
     } else {
-      extra = sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') = ${key}`
+      extra = key && key !== "__none__" ? eq(transactions.category, key) : sql`${categoryKeySql} is null`
     }
     // Fetch limit+1 so we know whether another page exists without a count
     // query; the extra SPLIT_BUFFER rows let us finish a split straddling the
@@ -153,6 +174,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: transactions.id,
         type: transactions.type,
         amount: transactions.amount,
+        currencyCode: transactions.currencyCode,
+        reportingAmount: reportingAmountSql(reporting),
         description: transactions.description,
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
@@ -176,6 +199,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       id: l.id,
       type: l.type,
       amount: Number(l.amount),
+      currency_code: l.currencyCode,
+      // Converted at the row's date (null = no rate): what lets the canvas add the
+      // legs of a split that spans currencies without adding them raw.
+      reporting_amount: l.reportingAmount == null ? null : Number(l.reportingAmount),
       description: l.description,
       category: l.category,
       date: l.date,
@@ -198,24 +225,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // expression as different, triggering "column date must appear in GROUP BY".
     const periodExpr = sql<string>`to_char(date_trunc(${sql.raw(`'${bucket}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD')`
 
-    const [periodRows, accountMetaT, ownerOrgT, leafPoolT] = await Promise.all([
-      db
-        .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr })
-        .from(transactions)
-        .innerJoin(clients, eq(transactions.clientId, clients.id))
+    const [periodRows, wealthT, ownerOrgT, leafPoolT] = await Promise.all([
+      withFx(
+        db
+          .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .$dynamic(),
+        fx,
+      )
         .where(where)
         .groupBy(periodExpr)
         .orderBy(sql`1 asc`),
-      db
-        .select({ current: wealthAccounts.currentBalance })
-        .from(wealthAccounts)
-        .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
+      buildWealthSummary(orgId, { reporting }),
       db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId)),
       db
         .select({
           id: transactions.id,
           type: transactions.type,
           amount: transactions.amount,
+          currencyCode: transactions.currencyCode,
+          reportingAmount: reportingAmountSql(reporting),
           description: transactions.description,
           category: transactions.category,
           date: sql<string>`${transactions.date}::text`,
@@ -262,6 +292,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let running = 0
     let totalIn = 0
     let totalOut = 0
+    let totalExcluded = 0
     const allPeriods = periodRows.map((p, i) => {
       const income = Number(p.income)
       const expense = Number(p.expense)
@@ -270,12 +301,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       running += net
       totalIn += income
       totalOut += expense
+      totalExcluded += Number(p.excluded ?? 0)
       // Only the drawn window needs its transactions attached; the rest exist
       // here purely to carry the running balance forward.
       const leaves = (i < windowStart ? [] : leavesByPeriod.get(p.key) ?? []).map((l) => ({
         id: l.id,
         type: l.type,
         amount: Number(l.amount),
+        currency_code: l.currencyCode,
+        reporting_amount: l.reportingAmount == null ? null : Number(l.reportingAmount),
         description: l.description,
         category: l.category,
         date: l.date,
@@ -294,16 +328,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         before,
         after: running,
         tx_count: Number(p.txCount),
+        excluded_count: Number(p.excluded ?? 0),
         leaves,
         more_count: i < windowStart ? 0 : Math.max(0, Number(p.txCount) - (logicalByPeriod.get(p.key)?.size ?? 0)),
       }
     })
     const periods = allPeriods.slice(windowStart)
 
+    // Consolidated balance = net worth; accounts with no rate today are counted, never added raw.
+    const balanceT = wealthT.net_worth
+    const balanceExcludedT = wealthT.accounts.filter((a) => a.converted_balance === null).length
+
     return res.json({
       mode: "timeline",
       bucket,
       personal,
+      currency: reporting,
+      excluded_count: totalExcluded,
       range: { from: fromDate, to: toDate },
       periods,
       // What the chain is NOT showing, so the canvas can offer the rest.
@@ -311,11 +352,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       period_limit: periodLimit,
       has_more_periods: windowStart > 0,
       final: {
-        label: ownerOrgT[0]?.name ?? "Workspace",
+        label: ownerOrgT[0]?.name || null, // null → named on the client
         total_in: totalIn,
         total_out: totalOut,
         total_net: totalIn - totalOut,
-        balance: accountMetaT.reduce((s, a) => s + Number(a.current), 0),
+        balance: balanceT,
+        excluded_count: totalExcluded,
+        balance_excluded_count: balanceExcludedT,
       },
       filters: { category: categories, client_id: clientIds, account_id: accountIds },
     })
@@ -327,41 +370,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? sql<string | null>`${transactions.wealthAccountId}::text`
       : groupBy === "client"
         ? sql<string | null>`${transactions.clientId}::text`
-        : sql<string | null>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`
+        : categoryKeySql
+  // A client group is named IN the aggregate, so every group carries its own
+  // name — not only the ones the newest-LEAF_POOL sample happens to reach.
+  const groupNameExpr = groupBy === "client" ? sql<string | null>`max(${clients.name})` : sql<string | null>`null`
 
-  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw] = await Promise.all([
-    db
-      .select({ income: incomeSum, expense: expenseSum, txCount: countExpr })
-      .from(transactions)
-      .innerJoin(clients, eq(transactions.clientId, clients.id))
-      .where(where),
-    db
-      .select({ key: groupKeyExpr, income: incomeSum, expense: expenseSum, txCount: countExpr })
-      .from(transactions)
-      .innerJoin(clients, eq(transactions.clientId, clients.id))
+  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw, wealth] = await Promise.all([
+    withFx(
+      db
+        .select({ income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .$dynamic(),
+      fx,
+    ).where(where),
+    withFx(
+      db
+        .select({ key: groupKeyExpr, name: groupNameExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .$dynamic(),
+      fx,
+    )
       .where(where)
       .groupBy(groupKeyExpr)
       .orderBy(sql`(${incomeSum} + ${expenseSum}) desc`),
-    // Account labels + balances for the accounts dimension (and the root balance).
+    // Account labels + balances for the accounts dimension. `opening`/`current`
+    // stay NATIVE (labelled by `currencyCode`); the root balance is `wealth`.
+    // ARCHIVED accounts too: their rows are still in the aggregates above, so
+    // their group and leaves need the account's own name.
     db
       .select({
         id: wealthAccounts.id,
-        label: sql<string>`coalesce(nullif(${wealthAccounts.nickname}, ''), ${wealthAccounts.bankName})`,
+        label: accountLabelSql,
         type: wealthAccounts.type,
         icon: wealthAccounts.icon,
         opening: wealthAccounts.openingBalance,
         current: wealthAccounts.currentBalance,
+        currencyCode: wealthAccounts.currencyCode,
         logoUrl: wealthAccounts.logoUrl,
         logoData: wealthAccounts.logoData,
       })
       .from(wealthAccounts)
-      .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
+      .where(eq(wealthAccounts.organizationId, orgId)),
     db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId)),
     db
       .select({
         id: transactions.id,
         type: transactions.type,
         amount: transactions.amount,
+        currencyCode: transactions.currencyCode,
+        reportingAmount: reportingAmountSql(reporting),
         description: transactions.description,
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
@@ -376,13 +435,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(where)
       .orderBy(desc(transactions.date), desc(transactions.createdAt))
       .limit(LEAF_POOL + SPLIT_BUFFER),
+    buildWealthSummary(orgId, { reporting }),
   ])
 
   // Trim the over-fetched pool back to LEAF_POOL without cutting the split that
   // straddles the boundary (its tail legs would otherwise drop below the cap).
   const leafPool = leafPoolRaw.slice(0, completeBoundarySplit(leafPoolRaw, LEAF_POOL))
   const accById = new Map(accountMeta.map((a) => [a.id, a]))
-  const clientNameByLeaf = new Map(leafPool.map((l) => [l.clientId, l.clientName]))
 
   // Bucket the recent-leaf pool by the active group key. We cap at
   // LEAVES_PER_GROUP *logical* transactions (a split counts once) and always
@@ -392,7 +451,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? l.accountId
       : groupBy === "client"
         ? l.clientId
-        : (l.category?.trim() || "Uncategorized")
+        : l.category || null // exactly categoryKeySql, so a leaf lands in the group that counted it
   const leavesByKey = new Map<string, typeof leafPool>()
   const logicalByKey = new Map<string, Set<string>>()
   for (const l of leafPool) {
@@ -407,11 +466,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     leavesByKey.set(k, arr)
   }
 
-  const labelForGroup = (key: string | null): string => {
-    if (groupBy === "account") return key ? (accById.get(key)?.label ?? "Account") : "Unassigned"
-    if (groupBy === "client") return key ? (clientNameByLeaf.get(key) ?? "Client") : "—"
-    return key ?? "Uncategorized"
-  }
+  // Every name comes from the data itself (null = a nameless account). The empty
+  // bucket (null key: no account / no category) keeps its legacy English label
+  // ONLY for store-pinned native builds, which render `label` raw; current
+  // clients name it by its key in the reader's language (money-flow.ts groupLabel).
+  const labelForGroup = (g: (typeof groupRows)[number]): string | null =>
+    groupBy === "account"
+      ? (g.key ? (accById.get(g.key)?.label ?? null) : "Unassigned")
+      : groupBy === "client"
+        ? g.name
+        : (g.key ?? "Uncategorized")
 
   const groups = groupRows.map((g) => {
     const income = Number(g.income)
@@ -422,6 +486,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       id: l.id,
       type: l.type,
       amount: Number(l.amount),
+      currency_code: l.currencyCode,
+      reporting_amount: l.reportingAmount == null ? null : Number(l.reportingAmount),
       description: l.description,
       category: l.category,
       date: l.date,
@@ -434,7 +500,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return {
       key: g.key ?? null,
       kind: groupBy,
-      label: labelForGroup(g.key),
+      label: labelForGroup(g),
       icon: acc?.icon ?? null,
       logo_src: acc ? logoDataUrl(acc.logoData) || acc.logoUrl || null : null,
       account_type: acc?.type ?? null,
@@ -442,8 +508,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       expense,
       net: income - expense,
       tx_count: count,
+      excluded_count: Number(g.excluded ?? 0),
+      // An account's own balances are NATIVE — format them with account_currency,
+      // not with the reporting currency the income/expense figures are in.
       opening_balance: acc ? Number(acc.opening) : null,
       current_balance: acc ? Number(acc.current) : null,
+      account_currency: acc?.currencyCode ?? null,
       leaves,
       // count is logical txs; subtract the logical txs already sampled (a split
       // is one), not the raw leg count.
@@ -451,23 +521,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   })
 
-  const s = summaryRows[0] ?? { income: "0", expense: "0", txCount: 0 }
+  const s = summaryRows[0] ?? { income: "0", expense: "0", txCount: 0, excluded: 0 }
   const income = Number(s.income)
   const expense = Number(s.expense)
-  const balance = accountMeta.reduce((sum, a) => sum + Number(a.current), 0)
+  // Consolidated balance = net worth; accounts with no rate today are counted, never added raw.
+  const balance = wealth.net_worth
+  const balanceExcluded = wealth.accounts.filter((a) => a.converted_balance === null).length
 
   return res.json({
     mode: "grouped",
     group_by: groupBy,
     personal,
+    currency: reporting,
+    excluded_count: Number(s.excluded ?? 0),
     range: { from: fromDate, to: toDate },
     root: {
-      label: ownerOrg[0]?.name ?? "Workspace",
+      label: ownerOrg[0]?.name || null, // null → named on the client
       income,
       expense,
       net: income - expense,
       tx_count: Number(s.txCount),
       balance,
+      excluded_count: Number(s.excluded ?? 0),
+      balance_excluded_count: balanceExcluded,
     },
     groups,
     filters: { category: categories, client_id: clientIds, account_id: accountIds },

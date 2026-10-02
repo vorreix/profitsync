@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { serialize } from "../../../src/lib/db/index.js"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
-import { createTransfer } from "../../_lib/wealth-accounts.js"
+import { createTransfer, createTransferIntent } from "../../_lib/wealth-accounts.js"
 import { resolveCardForLeg } from "../../_lib/cards.js"
 
 /**
@@ -27,13 +27,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
-  const { from_account_id, to_account_id, amount, date, note, from_card_id } = req.body as {
+  const { from_account_id, to_account_id, amount, source_amount, destination_amount, source_fee_amount, source_currency, destination_currency, status, date, note, from_card_id } = req.body as {
     from_account_id?: string
     to_account_id?: string
     amount?: number | string
+    source_amount?: number | string
+    destination_amount?: number | string
+    source_fee_amount?: number | string
+    source_currency?: string
+    destination_currency?: string
+    status?: string
     date?: string
     note?: string
     from_card_id?: string | null
+  }
+
+  if (status && !["planned", "pending", "completed"].includes(status)) {
+    return res.status(400).json({ error: "status must be planned, pending, or completed", code: "invalid_transfer_status" })
   }
 
   let fromAccountId = from_account_id ?? ""
@@ -51,15 +61,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "A card can't pay itself", code: "funding_self" })
   }
 
-  const result = await createTransfer(orgId, userId, {
+  const input = {
     fromAccountId,
     toAccountId: to_account_id ?? "",
-    amount: Number(amount),
+    amount,
+    sourceAmount: source_amount,
+    destinationAmount: destination_amount,
+    sourceFeeAmount: source_fee_amount,
+    sourceCurrency: source_currency,
+    destinationCurrency: destination_currency,
     date,
     note,
     fromCardId,
-  })
+  }
+  if (status === "planned" || status === "pending") {
+    const intent = await createTransferIntent(orgId, userId, input, status)
+    if (!intent.ok) return res.status(intent.status).json(intent.body)
+    return res.status(201).json(serialize(intent.row))
+  }
+  const result = await createTransfer(orgId, userId, input)
   if (!result.ok) return res.status(result.status).json(result.body)
 
-  return res.status(201).json({ group_id: result.groupId, from_leg: serialize(result.outLeg), to_leg: serialize(result.inLeg), attach_to: result.outLeg.id })
+  return res.status(201).json({ transfer_id: result.transferId, group_id: result.groupId, from_leg: serialize(result.outLeg), to_leg: serialize(result.inLeg), fee_leg: result.feeLeg ? serialize(result.feeLeg) : null, attach_to: result.outLeg.id })
 }

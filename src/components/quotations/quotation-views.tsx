@@ -32,7 +32,8 @@ export interface QuotationActions {
   onToggleSelect: (id: string) => void
   onEnterSelection: (id: string) => void
   onOpenClient: (id: string) => void
-  formatAmount: (n: number) => string
+  /** `code` = the quote's own currency (null on legacy rows → the workspace's). */
+  formatAmount: (n: number, code?: string | null) => string
   bindLongPress: (onLongPress: () => void) => LongPressProps
   didLongPress: () => boolean
 }
@@ -148,7 +149,7 @@ export const QuotationCard = memo(function QuotationCard({
         </div>
 
         <div className="flex items-center justify-between pt-1 border-t">
-          <p className="text-base font-bold">{actions.formatAmount(Number(q.amount))}</p>
+          <p className="text-base font-bold">{actions.formatAmount(Number(q.amount), q.currency_code)}</p>
           {linkedClient ? (
             <button
               className="flex items-center gap-1 text-xs text-primary hover:underline"
@@ -175,7 +176,9 @@ export const QuotationListRow = memo(function QuotationListRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-lg border bg-card p-3 cursor-pointer hover:bg-accent/40 transition-colors min-h-11",
+        // Phones: the actions wrap onto their own line, so a long figure
+        // ('₹12,34,567.50', 'KWD 1,234,567.500') never pushes them off-screen.
+        "flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-lg border bg-card p-3 cursor-pointer hover:bg-accent/40 transition-colors min-h-11",
         selected && "ring-2 ring-primary",
       )}
       onClick={() => {
@@ -215,10 +218,10 @@ export const QuotationListRow = memo(function QuotationListRow({
       <span className={cn("hidden sm:inline text-xs font-medium px-2 py-0.5 rounded-full shrink-0", STATUS_COLORS[q.status])}>
         {statusLabel(q.status)}
       </span>
-      <p className="text-sm font-semibold tabular-nums shrink-0 w-24 text-right">{actions.formatAmount(Number(q.amount))}</p>
+      <p className="text-sm font-semibold tabular-nums shrink-0 min-w-24 text-right whitespace-nowrap">{actions.formatAmount(Number(q.amount), q.currency_code)}</p>
       <p className="hidden lg:block text-xs text-muted-foreground shrink-0 w-24 text-right">{formatQuotationDate(q.created_at)}</p>
       {!selectionMode && (
-        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex basis-full sm:basis-auto justify-end items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
           {canConvertQuotation(q) && (
             <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" aria-label={t("convertToClientBtn")} title={t("convertToClientBtn")} onClick={() => actions.onConvert(q)}>
               <UserPlus className="size-3.5" />
@@ -290,7 +293,7 @@ const QuotationTableRow = memo(function QuotationTableRow({
           </button>
         )}
       </td>
-      <td className="p-2 text-right tabular-nums font-semibold whitespace-nowrap">{actions.formatAmount(Number(q.amount))}</td>
+      <td className="p-2 text-right tabular-nums font-semibold whitespace-nowrap">{actions.formatAmount(Number(q.amount), q.currency_code)}</td>
       <td className="p-2 whitespace-nowrap">
         <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", STATUS_COLORS[q.status])}>{statusLabel(q.status)}</span>
       </td>

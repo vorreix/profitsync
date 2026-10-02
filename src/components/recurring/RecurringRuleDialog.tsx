@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowDownRight, ArrowUpRight, CalendarClock, ChevronDown, HandCoins, Plus, TriangleAlert } from "lucide-react"
-import { apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiErrorCode, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiErrorBody } from "@/lib/api-error-codes"
 import { useOrg } from "@/lib/org-context"
 import { useModalDraft } from "@/hooks/use-modal-draft"
 import { useCurrency } from "@/lib/currency-context"
@@ -16,6 +17,7 @@ import { previewDebt } from "@/lib/debt-preview"
 import { toCents } from "@/lib/debt-math"
 import { formatMoney } from "@/lib/wealth"
 import { getCurrencySymbol } from "@/lib/currencies"
+import { amountInputProps } from "@/lib/money"
 import { cn } from "@/lib/utils"
 import { Collapse } from "@/components/Collapse"
 import { DebtPreviewCard } from "@/components/debts/DebtPreviewCard"
@@ -152,6 +154,9 @@ export function RecurringRuleDialog({
   const [moreDebt, setMoreDebt] = useState(false)
   // Set when Save was pressed with no category; cleared the moment one is picked.
   const [categoryError, setCategoryError] = useState(false)
+  // Set when picking an account in another currency cleared the amount — says
+  // why the field is empty until something is typed again.
+  const [amountReask, setAmountReask] = useState<string | null>(null)
   // Read at open time only — a fresh object identity each render must not
   // re-seed the form while the user is typing in it.
   const presetRef = useRef(preset)
@@ -197,6 +202,7 @@ export function RecurringRuleDialog({
     setUnlinkAsked(false)
     setMoreDebt(false)
     setCategoryError(false)
+    setAmountReask(null)
     // `open` ONLY — see ruleRef above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -224,7 +230,17 @@ export function RecurringRuleDialog({
 
   const interval = Math.max(1, Math.floor(Number(form.frequency_interval) || 1))
   const today = new Date().toISOString().split("T")[0]
-  const symbol = getCurrencySymbol(currency)
+  // The currency the amount is in: the paying account's own. With no account
+  // the rule keeps the currency it was made in — the server does the same.
+  const currencyOfAccount = (accountId: string) =>
+    accounts.find((a) => a.id === accountId)?.currency_code || rule?.currency_code || currency
+  const amountCurrency = currencyOfAccount(form.wealth_account_id)
+  // Every figure typed or previewed here is SAVED in that currency — the
+  // amount, and a debt made here, which is born in its payer's (MC-014).
+  const symbol = getCurrencySymbol(amountCurrency)
+  // The prefix is 1–5 characters ("$" … "F CFA"), so the input makes room for
+  // it rather than assuming one glyph; logical, so it sits at the start in RTL.
+  const prefixPad = { paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }
   const incoming = form.type === "incoming"
 
   const candidate: LinkCandidateRule = useMemo(() => ({
@@ -235,6 +251,7 @@ export function RecurringRuleDialog({
     accountId: form.wealth_account_id || null,
     accountType: accounts.find((a) => a.id === form.wealth_account_id)?.type ?? null,
     accountArchived: false,
+    accountCurrency: accounts.find((a) => a.id === form.wealth_account_id)?.currency_code ?? null,
     // The debt it ALREADY repays: a rule services one debt, so while it has
     // one, no other debt — and no new one — may be offered here. Unlinking is
     // a deliberate step on its own page.
@@ -251,12 +268,23 @@ export function RecurringRuleDialog({
       id: d.id,
       direction: d.direction,
       archived: !!d.archived_at,
+      currency: d.currency,
       // A PAUSED rule counts too, so a debt that already has one is not offered.
       lifecycle: d.lifecycle,
       linkedRuleIds: (d.repayment_linked ?? d.repayment_active) ? (rule?.debt_account_id === d.id ? [rule.id] : ["other"]) : [],
     })),
     [debts, candidate, rule?.id, rule?.debt_account_id],
   )
+
+  // The debt this rule already repays, once the payer just picked is in
+  // another currency: it no longer qualifies, and the field below says why
+  // instead of quietly dropping it (MC-076). Saving like this is refused in
+  // the same words.
+  const ownDebtId = rule?.debt_account_id ?? null
+  const keptDebt = ownDebtId && !form.debt_choice && !unlinkAsked ? (debts ?? []).find((d) => d.id === ownDebtId) ?? null : null
+  const keptDebtCurrency = keptDebt?.currency && candidate.accountCurrency && keptDebt.currency.toUpperCase() !== candidate.accountCurrency.toUpperCase()
+    ? keptDebt.currency
+    : null
 
   const creatingDebt = form.debt_choice === "new"
   const linkedDebt = creatingDebt ? null : (debts ?? []).find((d) => d.id === form.debt_choice) ?? null
@@ -283,14 +311,16 @@ export function RecurringRuleDialog({
   // choice keeps the form honest instead of letting it claim a repayment the
   // save would refuse. Wait for the debts to load: an edit seeds its own link
   // before the list arrives, and clearing it then would silently unlink.
+  // Back on a payer the rule's own debt accepts, it is shown again: it was
+  // only out of reach, never unlinked (that takes a deliberate "No").
   useEffect(() => {
     if (debts === null) return
     setForm((f) => {
-      if (!f.debt_choice) return f
+      if (!f.debt_choice) return ownDebtId && !unlinkAsked && eligibleDebts.some((d) => d.id === ownDebtId) ? { ...f, debt_choice: ownDebtId } : f
       if (f.debt_choice === "new") return createRefusal ? { ...f, debt_choice: "" } : f
       return eligibleDebts.some((d) => d.id === f.debt_choice) ? f : { ...f, debt_choice: "" }
     })
-  }, [debts, createRefusal, eligibleDebts])
+  }, [debts, createRefusal, eligibleDebts, ownDebtId, unlinkAsked])
 
   // Live preview: the debt's whole story when one is involved, the schedule and
   // what it costs a year otherwise.
@@ -422,6 +452,9 @@ export function RecurringRuleDialog({
           // here was born at 0% against a figure that was not its original.
           original_amount: form.debt_original.trim() === "" ? Number(form.debt_balance) : Number(form.debt_original),
           annual_rate_pct: form.debt_rate.trim() === "" ? null : Number(form.debt_rate),
+          // Born in the paying account's currency: a repayment moves one amount
+          // on both sides, so the debt can only be in the currency it is paid in.
+          ...(candidate.accountCurrency ? { currency: candidate.accountCurrency } : {}),
           ...(rule
             ? { link_rule_id: rule.id }
             : {
@@ -479,7 +512,12 @@ export function RecurringRuleDialog({
       draft.clearDraft()
       onOpenChange(false)
     } catch (err) {
-      toast.error(err instanceof Error && err.message ? err.message : t("recurring.saveFailed"))
+      // A payer in another currency than the debt it repays: name the debt's,
+      // in the words of the hint above — the refusal itself doesn't carry it.
+      const debtCur = keptDebt?.currency || linkedDebt?.currency
+      toast.error(debtCur && apiErrorCode(err) === "currency_mismatch" && !apiErrorBody(err)?.currency
+        ? t("apiErrors.currency_mismatch_debt", { currency: debtCur })
+        : apiErrorMessage(err, t("recurring.saveFailed")))
     } finally {
       setSaving(false)
     }
@@ -536,9 +574,10 @@ export function RecurringRuleDialog({
           <div className="space-y-1.5">
             <Label htmlFor="rec-amount">{t("recurring.amount")}</Label>
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
-              <Input id="rec-amount" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.amount} className="h-12 pl-9 text-lg font-semibold tabular-nums" onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+              <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
+              <Input id="rec-amount" type="number" min="0" {...amountInputProps(amountCurrency)} value={form.amount} style={prefixPad} className="h-12 text-lg md:text-lg font-semibold tabular-nums" onChange={(e) => { setAmountReask(null); setForm((f) => ({ ...f, amount: e.target.value })) }} />
             </div>
+            {amountReask && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t("recurring.amountReenterCurrency", { currency: amountReask })}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -582,7 +621,16 @@ export function RecurringRuleDialog({
               accounts={accounts}
               cards={cards}
               value={form.card_id || form.wealth_account_id}
-              onChange={(id, picked) => setForm((f) => ({ ...f, wealth_account_id: picked ? picked.account_id : id, card_id: picked?.card_id ?? "" }))}
+              onChange={(id, picked) => {
+                const accountId = picked ? picked.account_id : id
+                // Another currency changes what the amount MEANS — €15 a month
+                // is not ₹15 — so it is cleared and asked for again rather than
+                // carried over (the server refuses a currency change without it).
+                const next = currencyOfAccount(accountId)
+                const changed = next !== amountCurrency
+                if (changed && (form.amount !== "" || amountReask)) setAmountReask(next)
+                setForm((f) => ({ ...f, wealth_account_id: accountId, card_id: picked?.card_id ?? "", ...(changed ? { amount: "" } : {}) }))
+              }}
               currency={currency}
               allowNone
               noneLabel={t("recurring.noAccount")}
@@ -621,6 +669,9 @@ export function RecurringRuleDialog({
               </SelectContent>
             </Select>
 
+            {keptDebtCurrency && (
+              <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t("apiErrors.currency_mismatch_debt", { currency: keptDebtCurrency })}</p>
+            )}
             {linkedDebt && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <HandCoins className="size-3.5 shrink-0" aria-hidden /> {t("recurring.debtLinkForwardOnly")}
@@ -641,15 +692,15 @@ export function RecurringRuleDialog({
                   <div className="space-y-1.5">
                     <Label htmlFor="rec-debt-original">{t("debts.originalAmount")}</Label>
                     <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
-                      <Input id="rec-debt-original" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_original} className="pl-7 tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_original: e.target.value }))} />
+                      <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
+                      <Input id="rec-debt-original" type="number" min="0" {...amountInputProps(amountCurrency)} value={form.debt_original} style={prefixPad} className="tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_original: e.target.value }))} />
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="rec-debt-balance">{incoming ? t("debts.howMuchOwed") : t("debts.howMuchLeft")}</Label>
                     <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
-                      <Input id="rec-debt-balance" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_balance} className="pl-7 tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_balance: e.target.value }))} />
+                      <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
+                      <Input id="rec-debt-balance" type="number" min="0" {...amountInputProps(amountCurrency)} value={form.debt_balance} style={prefixPad} className="tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_balance: e.target.value }))} />
                     </div>
                   </div>
                 </div>
@@ -687,7 +738,7 @@ export function RecurringRuleDialog({
             {/* Say WHY there is nothing to pick. "No debt fits" is only the
                 truth once the payment could service one at all; before that the
                 real answer is the account, the card or the end date. */}
-            {!withDebt && debts !== null && (createRefusal
+            {!withDebt && debts !== null && !keptDebtCurrency && (createRefusal
               ? createHintKey && <p className="text-[11px] text-muted-foreground">{t(createHintKey)}</p>
               : eligibleDebts.length === 0 && <p className="text-[11px] text-muted-foreground">{t("recurring.noEligibleDebts")}</p>
             )}
@@ -729,7 +780,7 @@ export function RecurringRuleDialog({
           {withDebt && debtPreview ? (
             <DebtPreviewCard
               preview={debtPreview}
-              currency={currency}
+              currency={linkedDebt?.currency || amountCurrency}
               receivable={incoming}
               frequencyWord={t(`recurring.unitWord.${form.frequency_unit}`)}
               arriving={null}
@@ -748,7 +799,7 @@ export function RecurringRuleDialog({
                   <p className="text-sm">{schedulePreview.dates.map(fmtDate).join(" · ")}{schedulePreview.more ? " …" : ""}</p>
                   {schedulePreview.perYear > 0 && (
                     <p className="text-sm font-medium tabular-nums">
-                      {t("recurring.previewPerYear", { amount: formatMoney(schedulePreview.perYear, currency, true) })}
+                      {t("recurring.previewPerYear", { amount: formatMoney(schedulePreview.perYear, amountCurrency, true) })}
                     </p>
                   )}
                 </>

@@ -18,6 +18,10 @@ export type Client = {
   updated_at: string
   total_incoming?: number
   total_outgoing?: number
+  /** The currency `total_incoming`/`total_outgoing` are in (the workspace's reporting currency when computed). */
+  totals_currency?: string | null
+  /** Rows left out of the totals because they had no exchange rate for their day. */
+  excluded_count?: number | null
   attachment_count?: number
 }
 
@@ -78,6 +82,12 @@ export type DrilldownItem = {
   subtitle: string
   amount: string | null
   tx_type: string | null // "incoming" | "outgoing" for transactions
+  /** A transaction's kind (standard | refund | transfer) — lets a system-written title be translated. */
+  tx_kind?: string | null
+  /** The currency `amount` is in (a transaction's or quotation's own); null on a legacy row → the workspace's. */
+  currency_code?: string | null
+  /** `amount` in the reporting currency — what an amount sort compares; null when no rate is stored. */
+  reporting_amount?: string | null
   status: string | null
   date: string | null
   category: string
@@ -144,6 +154,14 @@ export type TransactionLeg = {
 }
 
 export type Transaction = {
+  /** Currency the row was posted in — its account's native currency. Absent on rows predating mig 0069. */
+  currency_code?: string | null
+  /** `amount` converted at the row's date into the workspace's reporting currency; null when no rate is stored. */
+  reporting_amount?: number | string | null
+  /** A collapsed split group: how many currencies its legs were posted in (> 1 → `amount` is converted, null when a leg has no rate). */
+  currency_count?: number
+  /** The logical transfer this leg belongs to (transfers.id) — set on every leg written since mig 0071. */
+  transfer_id?: string | null
   id: string
   client_id: string
   client_name?: string
@@ -157,7 +175,14 @@ export type Transaction = {
   // "C •••• 1234" / "D •••• 1234" chip (src/components/cards/CardChip.tsx).
   card_id?: string | null
   type: "incoming" | "outgoing"
-  amount: number
+  /**
+   * The row's amount in `currency_code`. NULL only on a collapsed split whose
+   * legs are in different currencies when a leg has no rate yet (GET
+   * /api/transactions grouped rows and /api/transactions/:id): there is no
+   * honest total, so show t("transactions:amountNoRate") and leave the row out
+   * of any sum. With `currency_count > 1` a non-null amount is converted (≈).
+   */
+  amount: number | null
   description: string
   category: string
   // User hashtags ("#business") — normalized by src/lib/transaction-tags.ts.
@@ -200,15 +225,117 @@ export type Transaction = {
 // /debts; their terms live in debt_details (see Debt below).
 export type WealthAccountType = "bank" | "cash" | "space" | "credit_card" | "loan" | "receivable"
 
+// ── Consolidated wealth (GET /api/wealth/summary) ────────────────────────────
+// Native balances are facts; `converted_*` are approximations at `rate_date`.
+// `complete=false` means some currency had no rate: its native figures are
+// still listed, but it is EXCLUDED from the converted totals (never counted as
+// 1:1). `stale=true` means at least one rate is not today's observation.
+export type WealthSummaryAccount = {
+  id: string
+  type: string
+  name: string
+  currency: string
+  native_balance: number
+  converted_balance: number | null
+  rate: string | null
+  rate_date: string | null
+  stale: boolean
+}
+
+export type WealthSummaryCurrency = {
+  currency: string
+  assets: number
+  liabilities: number
+  net: number
+  converted_assets: number | null
+  converted_liabilities: number | null
+  converted_net: number | null
+  rate: string | null
+  rate_date: string | null
+  stale: boolean
+  /** Percent of converted assets held in this currency (null when it could not be converted). */
+  share: number | null
+  account_count: number
+}
+
+export type WealthSummary = {
+  reporting_currency: string
+  net_worth: number
+  /** Everything held, receivables (money lent) included. */
+  assets: number
+  /** Everything owed: card debt + loans. */
+  liabilities: number
+  /** What the credit cards owe — the "owed on cards" figure. */
+  card_liabilities: number
+  /** Outstanding on loans (debts I owe). */
+  debts_owed: number
+  /** Outstanding on receivables (money owed to me) — in `assets`, never liquid. */
+  debts_receivable: number
+  complete: boolean
+  excluded_currencies: string[]
+  as_of: string | null
+  stale: boolean
+  /** True when at least one account is not in the reporting currency. */
+  multi_currency: boolean
+  by_currency: WealthSummaryCurrency[]
+  accounts: WealthSummaryAccount[]
+}
+
+// ── Logical transfers (transfers table; GET /api/wealth/transfers) ───────────
+// The header ABOVE the two ledger legs. `planned`/`pending` rows are intent only
+// (no legs, no balance effect); `completed` rows own their legs via
+// transactions.transfer_id; `cancelled` keeps the intent for audit. Amounts are
+// numeric strings in each side's NATIVE currency — never convert them in the UI.
+export type TransferStatus = "planned" | "pending" | "completed" | "cancelled"
+
+export type Transfer = {
+  id: string
+  organization_id: string
+  group_id: string
+  source_account_id: string
+  destination_account_id: string
+  source_amount: string
+  source_currency: string
+  destination_amount: string
+  destination_currency: string
+  /** Destination units per ONE source unit (null for same-currency transfers). */
+  effective_rate: string | null
+  rate_source: string | null
+  source_fee_amount: string
+  status: TransferStatus
+  transfer_date: string
+  note: string
+  /** Set on a reversal: the transfer it undoes. */
+  reverses_transfer_id: string | null
+  completed_at: string | null
+  deleted_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // Enrichment from the list route (nickname or bank name of each side).
+  source_account_name?: string
+  destination_account_name?: string
+  /** The reversal that undid THIS transfer, if any (null = still reversible). */
+  reversed_by_transfer_id?: string | null
+}
+
 export type WealthAccount = {
   id: string
   organization_id: string
   type: WealthAccountType
   bank_name: string
   nickname: string
+  /** Native currency of this account's balances; absent only during legacy rollout. */
+  currency_code?: string | null
   opening_balance: number
   current_balance: number
   icon: string
+  // Colour identity (migration 0075) — presentation only. `color` is "" for
+  // AUTO (bank brand → stable per-row swatch) or a "#RRGGBB" override;
+  // `color_style` is how loudly the tile wears it. Resolver:
+  // src/lib/account-color.ts.
+  color?: string
+  color_style?: string
   // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
   // server-side; responses expose it as `logo_src` (a durable data: URL) which
   // the UI prefers over the expiring hotlinked `logo_url`.
@@ -231,6 +358,10 @@ export type WealthAccount = {
   updated_at: string
   transaction_count?: number
   attachment_count?: number
+  // Server-decided (src/lib/account-currency-lock.ts) — the Edit dialog's
+  // currency picker reads these, never transaction_count (live rows only).
+  currency_locked?: boolean
+  currency_lock_reason?: import("./account-currency-lock.js").AccountCurrencyLockReason | null
   // Savings goal (type='space' only). The monthly-contribution suggestion +
   // progress are DERIVED (src/lib/spaces.ts), not stored.
   goal_amount?: number | null
@@ -343,17 +474,32 @@ export type DebtsOverview = {
     open_count: number
     owed_by_currency: { currency: string; amount: number }[]
     receivable_by_currency: { currency: string; amount: number }[]
-    required_monthly: number
-    month: { required: number; paid: number; remaining: number; overdue: number }
+    // Every money total below is PER DEBT CURRENCY (native, never converted —
+    // docs/debts/DEBTS.md §2); render with formatByCurrency.
+    required_monthly_by_currency: { currency: string; amount: number }[]
+    month_by_currency: { currency: string; required: number; paid: number; remaining: number; overdue: number }[]
     next_payment: { debt_id: string; name: string; date: string; amount: number; currency: string } | null
     overdue_count: number
-    interest_this_month: number
+    interest_this_month_by_currency: { currency: string; amount: number }[]
     debt_free_date: string | null
-    total_repaid: number
+    total_repaid_by_currency: { currency: string; amount: number }[]
+    /** In the overview's `currency` (reporting), each row converted at its own date. */
     average_monthly_income: number
+    /** Income rows left out of the average for want of a rate. */
+    average_monthly_income_excluded: number
     insights: { key: string; params: Record<string, string | number> }[]
+    // Kept for bundles that predate the lists: each is ONLY the part in the
+    // overview's `currency` (0 when none) — never a sum across currencies.
+    /** @deprecated use required_monthly_by_currency */
+    required_monthly: number
+    /** @deprecated use month_by_currency */
+    month: { required: number; paid: number; remaining: number; overdue: number }
+    /** @deprecated use interest_this_month_by_currency */
+    interest_this_month: number
+    /** @deprecated use total_repaid_by_currency */
+    total_repaid: number
   }
-  upcoming: { debt_id: string; date: string; amount: number; paid: boolean; paid_amount: number }[]
+  upcoming: { debt_id: string; date: string; amount: number; currency: string; paid: boolean; paid_amount: number }[]
 }
 
 export type DebtScheduleRow = { period: number; date: string; payment: number; interest: number; principal: number; balance: number }
@@ -507,6 +653,12 @@ export type Card = {
   funding_card_network?: CardNetwork | null
   funding_card_status?: CardStatus | null
   transaction_count?: number
+  /** The ledger account's native currency (a credit card's own currency; null = legacy → reporting). */
+  account_currency_code?: string | null
+  /** The paying account's native currency — autopay only runs when it equals the card's. */
+  funding_account_currency_code?: string | null
+  /** Credit: true once anything is recorded or scheduled in the card, so its currency can no longer be corrected. */
+  currency_locked?: boolean
 }
 
 // GET /api/cards/:id/summary
@@ -520,7 +672,14 @@ export type CardSummary = {
   // When autopay will next pay and how much (null = nothing scheduled).
   next_autopay: CardAutopayPreview | null
   // What the last autopay attempt did (null = never ran).
-  last_autopay: { status: "paid" | "skipped" | "failed"; at: string | null; group_id: string | null; statement_id: string } | null
+  last_autopay: {
+    status: "paid" | "skipped" | "failed"
+    at: string | null
+    group_id: string | null
+    statement_id: string
+    /** Why it failed, as a stable code: `autopay_deferred` (handed back, retried on a later run), `autopay_reversed` (paid, then the payment was reversed — not retried) or `autopay_currency_mismatch`. */
+    reason?: string | null
+  } | null
 }
 
 export type RecurringRule = {
@@ -534,6 +693,8 @@ export type RecurringRule = {
   account_name?: string | null
   account_type?: WealthAccountType | null
   account_archived?: boolean | null
+  /** The paying account's native currency. */
+  account_currency?: string | null
   account_icon?: string | null
   account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
@@ -554,6 +715,8 @@ export type RecurringRule = {
   name: string
   type: "incoming" | "outgoing"
   amount: number | string
+  /** The rule's currency, snapshotted onto every occurrence it posts. */
+  currency_code?: string | null
   category: string
   frequency_unit: "day" | "week" | "month" | "year"
   frequency_interval: number
@@ -573,7 +736,10 @@ export type RecurringRule = {
  */
 export type RecurringRuleDetail = RecurringRule & {
   generated_count: number
-  posted_total: string | number
+  /** Single-currency total in the rule's direction; null once the rule has posted in several currencies. */
+  posted_total: string | number | null
+  /** What the rule has posted, one entry per currency, in the rule's direction (MC-074). */
+  posted_by_currency?: { currency: string | null; amount: string | number }[]
   first_posted_date: string | null
   last_posted_date: string | null
 }
@@ -598,6 +764,8 @@ export type Quotation = {
   email: string
   phone: string
   amount: string
+  /** The currency the quote was written in; null on legacy rows (= the workspace's). */
+  currency_code?: string | null
   date: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
@@ -630,6 +798,10 @@ export type Budget = {
   period: "lifetime" | "monthly" | "weekly" | "daily"
   amount: number
   spent: number | null
+  /** The currency the cap is authored and judged in (kept across reporting changes). */
+  currency?: string
+  /** Rows in the current window left out of `spent` (no exchange rate for their day). */
+  excluded_count?: number
   created_at?: string
   updated_at?: string
 }
@@ -698,6 +870,8 @@ export function accountTypeAllows(
 }
 
 export type Organization = {
+  /** Consolidation/display currency. `currency` stays as the compatibility alias (same value). */
+  reporting_currency?: string
   id: string
   owner_user_id: string
   name: string
@@ -944,6 +1118,12 @@ export type SpendingBudget = {
   other_spent: number | null
   other_spent_by_view: Record<SpendingViewWindow, number> | null
   children_count: number
+  /** The currency every figure on this budget is in (its own, else the workspace's reporting currency). */
+  currency?: string
+  /** Ledger rows in the budget's window that had no exchange rate for their day and are NOT in `spent`. */
+  excluded_count?: number
+  /** The same, per view window — what `spent_by_view` left out. */
+  excluded_by_view?: Record<SpendingViewWindow, number>
 }
 
 /** What the individual budgets add up to against the overall budget, in the view window. */
@@ -959,6 +1139,10 @@ export type SpendingAllocation = {
 export type SpendingBudgetsResponse = {
   budgets: SpendingBudget[]
   today: string
+  /** The workspace's reporting currency — what a budget without its own is measured in. */
+  currency?: string
+  /** Rows each view window left out of the active budgets — each row ONCE, however many budgets it falls under. */
+  excluded_by_view?: Record<SpendingViewWindow, number>
 }
 
 export type SpendingBudgetAnalyticsWindow = {
@@ -977,12 +1161,22 @@ export type SpendingBudgetAnalyticsWindow = {
   per_budget_limit: Record<string, number | null>
   /** NOT a partition — the overall's entry equals `total` and a sub-budget's sits inside its parent's. */
   per_budget: Record<string, number>
+  /** Rows (no rate into the reporting currency) `total` / `unclaimed` left out. */
+  excluded_count?: number
+  /** budget id → rows its `per_budget` figure left out (no rate into its currency). */
+  per_budget_excluded?: Record<string, number>
+  /** The figure the window is judged on, in `headline_currency`: the overall budget, else the same-currency category budgets. */
+  headline?: { spent: number; limit: number | null; excluded: number }
 }
 
 export type SpendingBudgetAnalytics = {
   view: SpendingViewWindow
   back: number
   today: string
+  /** The reporting currency of `total`, `unclaimed`, `budgeted_limit` and `categories`. */
+  currency?: string
+  /** The currency of each window's `headline` and of `adherence`. */
+  headline_currency?: string
   windows: SpendingBudgetAnalyticsWindow[]
   categories: { name: string; spent: number; budget_id: string | null }[]
   adherence: { periods: number; within: number; rate: number; streak: number; avg_delta: number }
@@ -993,8 +1187,12 @@ export type SpendingBudgetRecentTx = {
   date: string
   description: string
   category: string
-  /** Signed: a refund is negative. */
+  /** Signed: a refund is negative. In the row's own `currency_code`. */
   amount: number
+  /** The row's native currency (null on rows predating currency tagging). */
+  currency_code?: string | null
+  /** `amount` in the budget's currency; null when no rate is stored for its day. */
+  amount_in?: number | null
   kind: string
   client_name: string | null
   wealth_account_id: string | null
@@ -1012,8 +1210,13 @@ export type SpendingBudgetDetail = {
   budget: SpendingBudget
   children: SpendingBudget[]
   parent: { id: string; name: string } | null
-  series: { start: string; spent: number; amount: number }[]
+  /** `excluded_count`: rows of that window left out of `spent` (no rate). */
+  series: { start: string; spent: number; amount: number; excluded_count?: number }[]
   recent: SpendingBudgetRecentTx[]
   history: SpendingBudgetHistoryEntry[]
   today: string
+  /** The budget's currency — every figure here except a recent row's native `amount`. */
+  currency?: string
+  /** Rows in the budget's own window left out of `spent` (no rate). */
+  excluded_count?: number
 }

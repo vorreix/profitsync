@@ -117,6 +117,12 @@ When that fires, the worker `POST`s to `https://profitsync.net/api/cron/notifica
 with the service token; ProfitSync then delivers due reminders / scheduled
 broadcasts using its existing notification service.
 
+`make register` (run by `make up` / `make rebuild`) registers two schedules:
+`notifications-dispatch` (hourly, `/api/cron/notifications`) and `fx-refresh`
+(daily 16:30 UTC, `/api/cron/fx`: today's exchange rates and the missing
+history for every currency pair in use; report requests only top up the last
+month). `.github/workflows/fx-refresh.yml` is the FX fallback driver.
+
 ## Run it
 
 ```bash

@@ -1,6 +1,6 @@
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { clients, organizations, quotations, subscriptions, userProfiles } from "../../src/lib/db/schema.js"
+import { clients, organizations, quotations, subscriptions, transactions, userProfiles, wealthAccounts } from "../../src/lib/db/schema.js"
 import { stopDodoBilling, type StopBillingResult } from "./admin-billing.js"
 
 export type OrgDeleteResult = {
@@ -10,7 +10,7 @@ export type OrgDeleteResult = {
 }
 
 /**
- * Fully tear down one organization (admin action):
+ * Fully tear down one organization (owner delete, admin action, account deletion):
  *
  * 1. **Stop billing on Dodo** for its subscription so the customer is no longer
  *    charged (no-op for free/stub/manual rows).
@@ -18,15 +18,24 @@ export type OrgDeleteResult = {
  *    (or null), so they don't land on a deleted workspace.
  * 3. **Delete its clients + quotations** — these tables have NO `organization_id`
  *    foreign key, so deleting the org row alone would orphan them (and their
- *    transactions + attachments). Their own cascades clean those up.
+ *    transactions + attachments). Their own cascades clean those up. Then the
+ *    rows on its accounts that have no client (a personal workspace's whole
+ *    ledger): `transactions` has no org column and its account FK is SET NULL,
+ *    so they would outlive the workspace as unreachable, currency-less rows.
  * 4. **Delete the org row** — its FKs cascade subscriptions, members, categories,
  *    wealth accounts (+ their attachments), audit logs, invoices, and invitations.
  *
- * Never throws on a Dodo error — the local org is still removed and the Dodo outcome
- * is returned for the caller to report (an admin force-delete shouldn't be blocked by
- * a payment-processor hiccup; the failed cancel is surfaced, not swallowed silently).
+ * Never throws on a Dodo error, and always logs it. By default the local org is
+ * still removed and the Dodo outcome is returned for the caller to report (an admin
+ * force-delete shouldn't be blocked by a payment-processor hiccup). With
+ * `abortOnBillingFailure` a failed cancel stops BEFORE anything local is touched
+ * (`deleted: false`): deleting a workspace whose subscription Dodo is still billing
+ * also deletes the only mirror its owner could cancel it from — the owner delete.
  */
-export async function teardownOrganization(orgId: string): Promise<OrgDeleteResult> {
+export async function teardownOrganization(
+  orgId: string,
+  opts: { abortOnBillingFailure?: boolean } = {},
+): Promise<OrgDeleteResult> {
   const [sub] = await db
     .select()
     .from(subscriptions)
@@ -34,6 +43,16 @@ export async function teardownOrganization(orgId: string): Promise<OrgDeleteResu
     .orderBy(desc(subscriptions.updatedAt))
     .limit(1)
   const dodo: StopBillingResult = sub ? await stopDodoBilling(sub) : { provider: "none" }
+  if (dodo.provider === "dodo" && !dodo.ok) {
+    // Dodo's status + response body — never the API key.
+    console.error("[org-teardown] Dodo cancel failed", {
+      orgId,
+      providerSubscriptionId: sub?.providerSubscriptionId,
+      aborted: !!opts.abortOnBillingFailure,
+      error: dodo.error,
+    })
+    if (opts.abortOnBillingFailure) return { id: orgId, deleted: false, dodo }
+  }
 
   const affected = await db
     .select({ id: userProfiles.id })
@@ -55,6 +74,10 @@ export async function teardownOrganization(orgId: string): Promise<OrgDeleteResu
   // Tables that lack an org FK cascade — delete explicitly so nothing is orphaned.
   await db.delete(clients).where(eq(clients.organizationId, orgId))
   await db.delete(quotations).where(eq(quotations.organizationId, orgId))
+  await db.delete(transactions).where(inArray(
+    transactions.wealthAccountId,
+    db.select({ id: wealthAccounts.id }).from(wealthAccounts).where(eq(wealthAccounts.organizationId, orgId)),
+  ))
 
   const res = await db
     .delete(organizations)

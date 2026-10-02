@@ -1,6 +1,11 @@
 export type CurrencyInfo = {
   code: string
   name: string
+  /**
+   * The local sign. NOT for display on its own: many are shared ("$" by twenty
+   * currencies, "C$" by CAD and NIO, "kr", "Fr", "Rs") — call `getCurrencySymbol`,
+   * which only uses this when no other currency shares it.
+   */
   symbol: string
   country: string
 }
@@ -168,8 +173,66 @@ export function isValidCurrency(code: string): boolean {
   return CURRENCY_LIST.some((c) => c.code === code)
 }
 
+// ISO 4217 minor units of the listed currencies that don't use 2. A fixed
+// table, not Intl: Intl's digits are CLDR's DISPLAY choice (IDR, HUF, COP → 0)
+// and move with the ICU build, so a server and an old WebView would disagree
+// on which amount is valid.
+const ZERO_DECIMAL = new Set(["BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "VUV", "VND", "XAF", "XOF", "XPF"])
+const THREE_DECIMAL = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"])
+
+/** ISO 4217 minor units: JPY 0, USD 2, KWD 3. Unknown codes → 2. */
+export function minorUnits(code: string): number {
+  const c = code.trim().toUpperCase()
+  return ZERO_DECIMAL.has(c) ? 0 : THREE_DECIMAL.has(c) ? 3 : 2
+}
+
+/**
+ * The currencies NEW money may be created in — an account, workspace, budget,
+ * debt or card: every listed one whose minor units fit the numeric(20,2) money
+ * columns. KWD, BHD, … need a third decimal those columns can't keep, so they
+ * are not offered until the columns widen (docs/multi-currency/ARCHITECTURE.md
+ * "Minor units"); rows already in them stay readable (MC-031).
+ */
+export const SELECTABLE_CURRENCY_LIST = CURRENCY_LIST.filter((c) => minorUnits(c.code) <= 2)
+
+const SELECTABLE = new Set(SELECTABLE_CURRENCY_LIST.map((c) => c.code))
+export function isSelectableCurrency(code: string): boolean {
+  return SELECTABLE.has(code.trim().toUpperCase())
+}
+
+/**
+ * Intl's en-US symbol — the one `formatMoney` prints in English: "$", "CA$",
+ * "MX$", "€", or the ISO code where en-US has no sign of its own ("KWD",
+ * "NGN"). Never throws — a malformed code comes back as itself.
+ */
+export function intlCurrencySymbol(code: string): string {
+  try {
+    // Both fraction bounds explicit: older WebViews (iOS < 15.4) throw a
+    // RangeError when only one is given and it crosses the currency's default.
+    const part = new Intl.NumberFormat("en-US", { style: "currency", currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+      .formatToParts(0)
+      .find((p) => p.type === "currency")
+    return part?.value ?? code
+  } catch {
+    return code ?? ""
+  }
+}
+
+const SYMBOL_USES = new Map<string, number>()
+for (const c of CURRENCY_LIST) SYMBOL_USES.set(c.symbol, (SYMBOL_USES.get(c.symbol) ?? 0) + 1)
+
+/**
+ * The symbol to put in front of an amount INPUT: the currency's own sign when
+ * no other currency uses it ("€", "₹", "₦", "A$", "R"), and Intl's
+ * unambiguous one when it is shared — "CA$" not "C$" (NIO's too), "MX$" not
+ * "$", "SEK" not "kr". A CAD amount typed beside a bare "$" reads as US
+ * dollars (MC-140). Shared-symbol currencies whose prefix grew ("CA$", "CHF",
+ * "F CFA") need an input whose padding follows the prefix width. USD, GBP,
+ * JPY, KRW keep "$", "£", "¥", "₩". Never throws.
+ */
 export function getCurrencySymbol(code: string): string {
-  return CURRENCY_LIST.find((c) => c.code === code)?.symbol ?? code
+  const own = CURRENCY_LIST.find((c) => c.code === code)?.symbol
+  return own && SYMBOL_USES.get(own) === 1 ? own : intlCurrencySymbol(code)
 }
 
 /**
@@ -291,9 +354,13 @@ export function detectCountryCode(): string | undefined {
 
 /**
  * Best-effort default currency for the current user, detected entirely client-side.
- * Falls back to USD when location cannot be determined.
+ * Falls back to USD when location cannot be determined — or when the country's
+ * currency is not one a new workspace may use (Kuwait → KWD has a third decimal
+ * the money columns can't keep, MC-031): preselecting it made the server refuse
+ * a currency the user never picked.
  */
 export function detectDefaultCurrency(fallback = "USD"): string {
   const country = detectCountryCode()
-  return country ? currencyForCountry(country) : fallback
+  const code = country ? currencyForCountry(country) : fallback
+  return isSelectableCurrency(code) ? code : fallback
 }

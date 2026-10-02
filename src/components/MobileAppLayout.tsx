@@ -70,7 +70,6 @@ import { useChromeHidden } from "@/hooks/use-chrome-hidden"
 import type { AiAssistantResponse } from "@/lib/ai-parse"
 import type { SmartApply } from "@/components/transactions/AiQuickFill"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
-import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
 import { haptic } from "@/lib/native-shell"
 
@@ -174,7 +173,6 @@ export function MobileAppLayout() {
   const { signOut } = useClerk()
   const { activeOrg, orgs, profile, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
-  const { currency } = useCurrency()
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
@@ -230,7 +228,7 @@ export function MobileAppLayout() {
   const onTxCreated = (info: CreatedTxInfo) => {
     const label = info.type === "incoming" ? t("transactions.income") : t("transactions.expense")
     toast.success(
-      t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, currency) }),
+      t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, info.currency) }),
       info.id
         ? { action: { label: t("quickAdd.viewAction"), onClick: () => navigate(`/transactions?view=${info.id}`) } }
         : undefined,

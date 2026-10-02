@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
+import { billingCountry } from "../../_lib/billing-country.js"
 import { createSubscription, isDodoConfigured, productIdForPlan, type DodoEnv, type DodoCreateSubscriptionResult } from "../../_lib/dodo.js"
 import { billingCurrencyAttempts } from "../../../src/lib/billing-currency.js"
 import { logAttemptCreated, markAttempt } from "../../_lib/billing-attempts.js"
@@ -20,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (ctx.role !== "owner") {
-    return res.status(403).json({ error: "Only the owner can change the subscription" })
+    return res.status(403).json({ error: "Only the owner can change the subscription", code: "billing_owner_only" })
   }
 
   const { plan_key, cycle } = req.body as { plan_key?: string; cycle?: string }
@@ -138,13 +139,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ])
   const email = profile?.email ?? `${ctx.userId}@users.noreply.profitsync.net`
   const name = profile?.fullName?.trim() || email.split("@")[0]
-  // Billing country: prefer the user's saved profile country (authoritative for
-  // billing), else Vercel's IP geo, else US.
-  const profileCountry = profile?.country?.toUpperCase()
-  const country =
-    (profileCountry && profileCountry.length === 2 ? profileCountry : undefined) ||
-    (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() ||
-    "US"
+  // Billing country: the saved profile country, else Vercel's IP geo, else US —
+  // through the helper the pricing page uses, so what it showed is what we charge.
+  const country = billingCountry(profile?.country, req.headers["x-vercel-ip-country"])
   // Charge in the ORGANIZATION's currency when Dodo can route it; the chain
   // falls back to the country-derived currency (the Indian-card connector fix —
   // IN always bills INR) and finally to omitting the field, so a currency
@@ -187,7 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!sub) {
     const message = lastError instanceof Error ? lastError.message : "Dodo Payments failure"
     await markAttempt(attemptId, { status: "failed", providerErrorMessage: message })
-    return res.status(502).json({ error: message })
+    return res.status(502).json({ error: message, code: "billing_provider_failed" })
   }
 
   await markAttempt(attemptId, {

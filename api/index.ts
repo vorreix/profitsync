@@ -12,6 +12,7 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 // unchanged: /api/clients/123 still hits the clients/[id] handler, etc.
 // ---------------------------------------------------------------------------
 
+import { isRowCurrencyFkViolation } from "./_lib/db-errors.js"
 import profile from "./_routes/profile.js"
 import accountDeleteSummary from "./_routes/account/delete/summary.js"
 import accountDeleteRequestCode from "./_routes/account/delete/request-code.js"
@@ -29,6 +30,7 @@ import notificationsReminders from "./_routes/notifications/reminders.js"
 import notificationReminderById from "./_routes/notifications/reminders/[id].js"
 import notificationById from "./_routes/notifications/[id].js"
 import cronNotifications from "./_routes/cron/notifications.js"
+import cronFx from "./_routes/cron/fx.js"
 import clients from "./_routes/clients.js"
 import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
@@ -36,6 +38,7 @@ import clientAttachments from "./_routes/clients/[id]/attachments.js"
 import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
 import transactionsGroup from "./_routes/transactions/group.js"
+import transactionsGroupById from "./_routes/transactions/group/[groupId].js"
 import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
@@ -66,6 +69,11 @@ import wealthQuota from "./_routes/wealth/quota.js"
 import recurring from "./_routes/recurring.js"
 import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
+import wealthSummary from "./_routes/wealth/summary.js"
+import fxRate from "./_routes/fx/rate.js"
+import wealthTransfers from "./_routes/wealth/transfers.js"
+import wealthTransferById from "./_routes/wealth/transfers/[id].js"
+import wealthTransferReverse from "./_routes/wealth/transfers/[id]/reverse.js"
 import cardsList from "./_routes/cards.js"
 import cardsReorder from "./_routes/cards/reorder.js"
 import cardById from "./_routes/cards/[id].js"
@@ -130,6 +138,7 @@ import adminRolesRoute from "./_routes/admin/roles.js"
 import adminRoleById from "./_routes/admin/roles/[id].js"
 import adminStats from "./_routes/admin/stats.js"
 import adminWorker from "./_routes/admin/worker.js"
+import adminFx from "./_routes/admin/fx.js"
 import adminUserGroups from "./_routes/admin/user-groups.js"
 import adminUserGroupById from "./_routes/admin/user-groups/[id].js"
 import adminUserGroupMembers from "./_routes/admin/user-groups/[id]/members.js"
@@ -187,6 +196,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["notifications", "reminders", ":id"], handler: notificationReminderById },
   { segments: ["notifications", ":id"], handler: notificationById },
   { segments: ["cron", "notifications"], handler: cronNotifications },
+  { segments: ["cron", "fx"], handler: cronFx },
   { segments: ["internal", "quotations", "pdf-ready"], handler: quotationPdfReady },
 
   { segments: ["clients"], handler: clients },
@@ -219,6 +229,11 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["recurring"], handler: recurring },
   { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
+  { segments: ["wealth", "summary"], handler: wealthSummary },
+  { segments: ["fx", "rate"], handler: fxRate },
+  { segments: ["wealth", "transfers"], handler: wealthTransfers },
+  { segments: ["wealth", "transfers", ":id"], handler: wealthTransferById },
+  { segments: ["wealth", "transfers", ":id", "reverse"], handler: wealthTransferReverse },
   // Cards (debit + credit, linked to banks). Static "reorder" before ":id".
   { segments: ["cards"], handler: cardsList },
   { segments: ["cards", "reorder"], handler: cardsReorder },
@@ -244,6 +259,7 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["transactions"], handler: transactions },
   { segments: ["transactions", "group"], handler: transactionsGroup },
+  { segments: ["transactions", "group", ":groupId"], handler: transactionsGroupById },
   { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },
   { segments: ["transactions", ":id"], handler: transactionById },
   { segments: ["transactions", ":id", "attachments"], handler: transactionAttachments },
@@ -312,6 +328,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "roles", ":id"], handler: adminRoleById },
   { segments: ["admin", "stats"], handler: adminStats },
   { segments: ["admin", "worker"], handler: adminWorker },
+  { segments: ["admin", "fx"], handler: adminFx },
   { segments: ["admin", "user-groups"], handler: adminUserGroups },
   { segments: ["admin", "user-groups", ":id"], handler: adminUserGroupById },
   { segments: ["admin", "user-groups", ":id", "members"], handler: adminUserGroupMembers },
@@ -381,5 +398,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     req.query[key] = value
   }
 
-  return matched.handler(req, res)
+  try {
+    return await matched.handler(req, res)
+  } catch (err) {
+    // A money write that lost a race with an account currency change is
+    // rejected by the database (migration 0081) and fully rolled back — a
+    // refusal the user can act on, not a server error.
+    if (isRowCurrencyFkViolation(err) && !res.headersSent) {
+      return res.status(409).json({ error: "An account's currency changed since this form was opened. Close it and open it again.", code: "source_currency_mismatch" })
+    }
+    throw err
+  }
 }

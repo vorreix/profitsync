@@ -1,13 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, eq, isNull } from "drizzle-orm"
+import { and, count, eq, isNull, not, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { cards, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { fetchBrandPalette } from "../../_lib/bank-brand.js"
-import { loadCard, resolveFunding, serializeCard } from "../../_lib/cards.js"
+import { cardCurrencyLockedSql, loadCard, resolveFunding, sameNativeCurrency, serializeCard } from "../../_lib/cards.js"
 import { checkCreditCardQuota } from "../../_lib/quota.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { amountExceedsLimit, moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../../src/lib/money.js"
 import { cardDebt, isLiabilityType, isValidDayOfMonth } from "../../../src/lib/credit-card.js"
 import { todayIso } from "../../../src/lib/recurring.js"
 import { recurringRules } from "../../../src/lib/db/schema.js"
@@ -56,10 +57,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       autopay?: unknown
       status?: unknown
       refresh_brand?: boolean
-      credit?: { credit_limit?: number | string; statement_closing_day?: number; payment_due_day?: number } | null
+      credit?: { currency_code?: string | null; credit_limit?: number | string; statement_closing_day?: number; payment_due_day?: number } | null
+    }
+
+    // A credit card's currency may be CORRECTED (a card added in the wrong one)
+    // while nothing is recorded or scheduled in it — never relabelled after, as
+    // that would reinterpret every amount on it. Checked first, so a refusal
+    // leaves the rest of the edit unapplied.
+    let cardCurrency = account.currencyCode
+    let currencyChange: string | null = null
+    if (card.kind === "credit" && body.credit && body.credit.currency_code != null && body.credit.currency_code !== "") {
+      let next: string
+      try {
+        next = normalizeCurrencyCode(body.credit.currency_code)
+      } catch {
+        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+      }
+      if (!(await sameNativeCurrency(orgId, next, account.currencyCode))) {
+        // Bound values, not columns: drizzle renders a column UNQUALIFIED in a
+        // single-table select, and inside the subqueries "id" would bind to
+        // their own rows (the UPDATE below renders them qualified).
+        const [{ locked }] = await db
+          .select({ locked: cardCurrencyLockedSql(sql`${orgId}::uuid`, sql`${account.id}::uuid`, sql`${card.id}::uuid`) })
+          .from(wealthAccounts)
+          .where(eq(wealthAccounts.id, account.id))
+        if (locked) return res.status(409).json({ error: "This card's currency can't change once it has history. Add a new card in the right currency instead.", code: "account_currency_locked" })
+        // Corrected TO a currency whose decimals the columns keep (MC-031) —
+        // or the workspace's own, which a new card may use too.
+        if (!selectableCurrencyCode(next, await reportingCurrencyFor(orgId))) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+        currencyChange = next
+        cardCurrency = next
+      }
     }
 
     const patch: Partial<typeof cards.$inferInsert> = {}
+    let accountNickname: string | null = null
     const identityKeys = ["name", "holder_name", "network", "last4", "expiry_month", "expiry_year", "tier", "design"] as const
     if (identityKeys.some((k) => k in body)) {
       // Merge over the saved values so a partial PATCH never blanks a field.
@@ -85,10 +117,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tier: identity.value.tier,
         design: identity.value.design,
       })
-      // A credit card's nickname is also its liability account's name.
-      if (card.kind === "credit" && identity.value.name !== account.nickname) {
-        await db.update(wealthAccounts).set({ nickname: identity.value.name, updatedBy: userId, updatedAt: new Date() }).where(eq(wealthAccounts.id, account.id))
-      }
+      // A credit card's nickname is also its liability account's name —
+      // written with the card, once every refusal below has passed.
+      if (card.kind === "credit" && identity.value.name !== account.nickname) accountNickname = identity.value.name
     }
 
     // Re-link a DEBIT card to another bank — only while nothing refers to it
@@ -113,6 +144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // "no instrument", so the previous card is cleared rather than left stale.
     // null = not worked out yet; only looked up when the request needs it.
     let fundingIsLiability: boolean | null = null
+    let fundingCurrency: string | null = null
     if (card.kind === "credit" && (body.funding_account_id !== undefined || body.funding_card_id !== undefined)) {
       const wantAccount = body.funding_account_id !== undefined ? body.funding_account_id : card.fundingAccountId
       const wantCard = body.funding_card_id !== undefined ? body.funding_card_id : body.funding_account_id !== undefined ? null : card.fundingCardId
@@ -126,6 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.fundingAccountId = funding.accountId
       patch.fundingCardId = funding.cardId
       fundingIsLiability = funding.isLiability
+      fundingCurrency = funding.currencyCode
       // Losing the payer, or handing it to another card, always stops autopay.
       if (!funding.accountId || funding.isLiability) {
         patch.autopay = false
@@ -154,13 +187,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.autopaySince = on ? (card.autopay ? card.autopaySince ?? todayIso() : todayIso()) : null
     }
 
+    // ...and only ever from an account in the CARD'S currency: autopay records a
+    // plain transfer, and a cross-currency one needs the amount that actually
+    // arrived, which nobody is there to type — it would fail on every due date.
+    // Asked for → refused; brought about by a new payer or a corrected card
+    // currency → switched off, exactly like losing the payer. A legacy mismatch
+    // is only touched by an edit to one of the three.
+    const autopayAfter = patch.autopay ?? card.autopay
+    const payerAfter = patch.fundingAccountId !== undefined ? patch.fundingAccountId : card.fundingAccountId
+    if (card.kind === "credit" && autopayAfter && payerAfter && (patch.fundingAccountId !== undefined || body.autopay !== undefined || currencyChange)) {
+      if (fundingCurrency === null) {
+        const [f] = await db.select({ currencyCode: wealthAccounts.currencyCode }).from(wealthAccounts).where(eq(wealthAccounts.id, payerAfter))
+        fundingCurrency = f?.currencyCode ?? null
+      }
+      if (!(await sameNativeCurrency(orgId, fundingCurrency, cardCurrency))) {
+        if (body.autopay === true) return res.status(400).json({ error: "Autopay needs a paying account in the card's currency", code: "autopay_currency_mismatch" })
+        patch.autopay = false
+        patch.autopaySince = null
+      }
+    }
+
     // Credit configuration → the liability account (same rules as the account PATCH).
     if (card.kind === "credit" && body.credit && typeof body.credit === "object") {
       const c = body.credit
-      const acctPatch: { creditLimit?: string; statementClosingDay?: number; paymentDueDay?: number } = {}
+      const acctPatch: { currencyCode?: string; creditLimit?: string; statementClosingDay?: number; paymentDueDay?: number } = {}
+      if (currencyChange) acctPatch.currencyCode = currencyChange
       if (c.credit_limit !== undefined) {
         const limit = Number(c.credit_limit)
         if (!Number.isFinite(limit) || limit <= 0 || amountExceedsLimit(limit)) return res.status(400).json({ error: "credit_limit must be greater than 0" })
+        // To the card currency's decimals — only when restated (MC-031).
+        if (currencyChange || limit !== Number(account.creditLimit)) {
+          const badAmount = moneyRefusal(cardCurrency, c.credit_limit)
+          if (badAmount) return res.status(400).json(badAmount)
+        }
         acctPatch.creditLimit = String(limit)
       }
       if (c.statement_closing_day !== undefined) {
@@ -175,8 +234,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const nextDue = acctPatch.paymentDueDay ?? account.paymentDueDay
       if (nextClosing != null && nextDue != null && nextClosing === nextDue) return res.status(400).json({ error: "Closing day and due day must differ" })
       if (Object.keys(acctPatch).length) {
-        await db.update(wealthAccounts).set({ ...acctPatch, updatedBy: userId, updatedAt: new Date() }).where(eq(wealthAccounts.id, account.id))
-        await logAudit({ orgId, entityType: "wealth_account", entityId: account.id, action: "update", actorId: userId, changes: diffFields(account as Record<string, unknown>, { ...account, ...acctPatch } as Record<string, unknown>, ["creditLimit", "statementClosingDay", "paymentDueDay"]) })
+        // A currency correction re-asserts the lock IN the write: a row that
+        // landed since the check above makes this match nothing → 409.
+        const written = await db
+          .update(wealthAccounts)
+          .set({ ...acctPatch, updatedBy: userId, updatedAt: new Date() })
+          .where(and(
+            eq(wealthAccounts.id, account.id),
+            currencyChange ? not(cardCurrencyLockedSql(wealthAccounts.organizationId, wealthAccounts.id, sql`${card.id}`)) : undefined,
+          ))
+          .returning({ id: wealthAccounts.id })
+        if (written.length === 0) return res.status(409).json({ error: "This card's currency can't change once it has history. Add a new card in the right currency instead.", code: "account_currency_locked" })
+        await logAudit({ orgId, entityType: "wealth_account", entityId: account.id, action: "update", actorId: userId, changes: diffFields(account as Record<string, unknown>, { ...account, ...acctPatch } as Record<string, unknown>, ["currencyCode", "creditLimit", "statementClosingDay", "paymentDueDay"]) })
       }
     }
 
@@ -224,6 +293,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(full ? serializeCard(full) : { id })
     }
 
+    // Last write before the card's own: a refused edit (autopay, currency lock,
+    // debt, quota) must not leave the account renamed while the card is not.
+    if (accountNickname !== null) {
+      await db.update(wealthAccounts).set({ nickname: accountNickname, updatedBy: userId, updatedAt: new Date() }).where(eq(wealthAccounts.id, account.id))
+    }
     const [updated] = await db
       .update(cards)
       .set({ ...patch, updatedBy: userId, updatedAt: new Date() })

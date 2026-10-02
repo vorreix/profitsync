@@ -29,7 +29,7 @@ import {
 import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
-import { CurrencyProvider, useCurrency } from "@/lib/currency-context"
+import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { useNotificationOrgSwitch } from "@/lib/use-notification-org-switch"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
@@ -165,7 +165,6 @@ function AppLayoutInner() {
   const { signOut } = useClerk()
   const { activeOrg, profile, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
-  const { currency } = useCurrency()
   // A push tapped for a non-active org (?no_org=<id>) switches into that org here.
   useNotificationOrgSwitch()
   const [fabOpen, setFabOpen] = useState(false)
@@ -212,7 +211,7 @@ function AppLayoutInner() {
   const onTxCreated = (info: CreatedTxInfo) => {
     const label = info.type === "incoming" ? t("transactions.income") : t("transactions.expense")
     toast.success(
-      t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, currency) }),
+      t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, info.currency) }),
       info.id
         ? { action: { label: t("quickAdd.viewAction"), onClick: () => navigate(`/transactions?view=${info.id}`) } }
         : undefined,

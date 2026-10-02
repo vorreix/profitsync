@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowDownRight, ArrowUpRight, ChevronDown } from "lucide-react"
-import { apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
-import { amountExceedsLimit } from "@/lib/money"
+import { apiErrorCode, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiErrorBody } from "@/lib/api-error-codes"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import { toCents } from "@/lib/debt-math"
 import { previewDebt } from "@/lib/debt-preview"
 import { frequencyToRecurring, repaymentCursor } from "@/lib/debt-recurring"
@@ -20,6 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { DebtKindCombobox } from "@/components/debts/DebtKindCombobox"
 import { DebtPreviewCard } from "@/components/debts/DebtPreviewCard"
 
@@ -123,16 +125,33 @@ export function DebtFormSheet({
   const [direction, setDirection] = useState<DebtDirection>(initialDirection)
   const [form, setForm] = useState<Form>(() => empty(initialDirection))
   const [more, setMore] = useState(false)
-  const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  // Every active bank and cash account; `accounts` below is the ones in the debt's currency.
+  const [cashAccounts, setCashAccounts] = useState<WealthAccount[]>([])
+  // True once THIS opening's account list arrived — an empty `accounts` then
+  // means "none in this currency", not "still loading".
+  const [accountsLoaded, setAccountsLoaded] = useState(false)
+  // A currency picked under "More details"; null = the default below.
+  const [pickedCurrency, setPickedCurrency] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isEdit = !!editing
   const receivable = direction === "receivable"
-  // The workspace currency, always. A debt in another currency is a real thing
-  // and PATCH still accepts one, but asking everybody to pick a currency to
-  // record the money they owe their brother is noise on the common path.
-  const currency = isEdit ? editing.currency : orgCurrency
+  // The workspace currency by default — asking everybody to pick one to record
+  // the money they owe their brother is noise on the common path — but a debt
+  // in another currency is a real thing (/recurring can make one too), so it is
+  // one disclosure away (MC-093). With no account in the workspace currency
+  // (it was changed after the banks were added) the default is the currency
+  // the accounts are in, so the sheet never offers nothing to pay from.
+  const defaultCurrency = cashAccounts.length > 0 && !cashAccounts.some((a) => (a.currency_code || orgCurrency) === orgCurrency)
+    ? (cashAccounts.find((a) => a.is_default) ?? cashAccounts[0]).currency_code || orgCurrency
+    : orgCurrency
+  const currency = isEdit ? editing.currency : pickedCurrency ?? defaultCurrency
+  // Only accounts in the debt's own currency: money arriving and every
+  // instalment are one amount on both sides, so the server refuses any other.
+  const accounts = useMemo(() => cashAccounts.filter((a) => !a.currency_code || a.currency_code === currency), [cashAccounts, currency])
   const symbol = getCurrencySymbol(currency)
+  // Room for a 1–5 character prefix ("$" … "F CFA"), at the start in RTL too.
+  const prefixPad = { paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }
   const patch = (p: Partial<Form>) => { setForm((f) => ({ ...f, ...p })); setError(null) }
 
   useEffect(() => {
@@ -140,14 +159,18 @@ export function DebtFormSheet({
     setSaving(false)
     setError(null)
     setMore(false)
+    setPickedCurrency(null)
+    setAccountsLoaded(false)
     setDirection(editing?.direction ?? initialDirection)
     setForm(editing ? fromDebt(editing, repayment) : empty(initialDirection))
     let cancelled = false
     ;(async () => {
       const token = await getToken()
       if (!token) return
-      const accs = await apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[])
-      if (!cancelled) setAccounts(accs.filter((a) => !a.archived_at && (a.type === "bank" || a.type === "cash")))
+      const accs = await apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => null)
+      if (cancelled || !accs) return
+      setCashAccounts(accs.filter((a) => !a.archived_at && (a.type === "bank" || a.type === "cash")))
+      setAccountsLoaded(true)
     })()
     return () => { cancelled = true }
     // Keyed on IDENTITY, not on the objects: the detail page reloads on every
@@ -223,11 +246,17 @@ export function DebtFormSheet({
   // The account a repayment was funded from may since have been archived. The
   // picker can no longer show it, so the field LOOKS empty — clear it too, or
   // saving silently resubmits an id the server will reject with a message about
-  // a field the user cannot see.
+  // a field the user cannot see. Picking a currency with no account at all
+  // empties the list, and that must clear it as well — so the guard waits for
+  // the list to LOAD, never for it to be non-empty.
   useEffect(() => {
-    if (!form.repayFrom || accounts.length === 0) return
+    if (!form.repayFrom || !accountsLoaded) return
     if (!accounts.some((a) => a.id === form.repayFrom)) patch({ repayFrom: "" })
-  }, [accounts, form.repayFrom])
+  }, [accounts, accountsLoaded, form.repayFrom])
+  // Picking another currency does the same to the account the money lands in.
+  useEffect(() => {
+    if (form.moveAccountId && !accounts.some((a) => a.id === form.moveAccountId)) patch({ moveAccountId: accounts.length ? defaultSource : "" })
+  }, [accounts, form.moveAccountId, defaultSource])
 
   async function submit() {
     const balance = Number(form.balance)
@@ -286,7 +315,11 @@ export function DebtFormSheet({
       onOpenChange(false)
       onSaved(saved)
     } catch (err) {
-      toast.error(apiErrorMessage(err, t("couldNotSave")))
+      // An account in another currency than the debt (repay-from or where the
+      // money lands): name the debt's — the refusal itself doesn't carry it.
+      toast.error(apiErrorCode(err) === "currency_mismatch" && !apiErrorBody(err)?.currency
+        ? t("apiErrors.currency_mismatch_debt", { currency })
+        : apiErrorMessage(err, t("couldNotSave")))
     } finally {
       setSaving(false)
     }
@@ -296,8 +329,8 @@ export function DebtFormSheet({
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <div className="relative">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
-        <Input id={id} type="number" inputMode="decimal" min="0" step="0.01" value={value} placeholder="0.00" className="pl-7 tabular-nums" onChange={(e) => onChange(e.target.value)} />
+        <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
+        <Input id={id} type="number" min="0" {...amountInputProps(currency)} value={value} style={prefixPad} className="tabular-nums" onChange={(e) => onChange(e.target.value)} />
       </div>
     </div>
   )
@@ -468,6 +501,16 @@ export function DebtFormSheet({
             </button>
             <Collapse open={more}>
               <div className="space-y-3 border-t px-3 py-3">
+                {/* Set once: after the first payment a debt's currency is locked.
+                    The trigger is a 36px button; the group lifts it to a 44px
+                    touch target on phones and names it. */}
+                {!isEdit && (
+                  <div role="group" aria-labelledby="debt-currency-label" className="space-y-1.5 [&_button]:min-h-11 sm:[&_button]:min-h-9">
+                    <Label id="debt-currency-label">{t("currencyLabel")}</Label>
+                    <CurrencyCombobox value={currency} onValueChange={setPickedCurrency} disabled={saving} />
+                    <p className="text-xs text-muted-foreground">{t("currencyHint")}</p>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="debt-cp">{t("formalName")}</Label>
                   <Input id="debt-cp" value={form.counterparty} placeholder={t("formalNamePlaceholder")} onChange={(e) => patch({ counterparty: e.target.value })} />

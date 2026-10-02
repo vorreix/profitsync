@@ -141,10 +141,13 @@ test("the dashboard attention rail shows, orders and mirrors correctly", async (
     // being fixed, not by being waved away.
     for (const kind of ["card_payment_overdue", "card_autopay_failed", "charge_shortfall", "card_expired", "card_payment_due_soon", "recurring_paused", "card_utilization_high"]) {
       const el = page.locator(`[data-alert="${kind}"]`)
-      if (await el.count()) await expect(el.first().getByRole("button", { name: /dismiss/i })).toHaveCount(0)
+      // includeHidden: off-screen slides leave the accessibility tree, so a
+      // plain role query only ever sees the selected slide and these checks
+      // would pass (or fail) depending on which alert happens to be first.
+      if (await el.count()) await expect(el.first().getByRole("button", { name: /dismiss/i, includeHidden: true })).toHaveCount(0)
     }
     const expiring = page.locator('[data-alert="card_expiring"]')
-    if (await expiring.count()) await expect(expiring.first().getByRole("button", { name: /dismiss/i })).toHaveCount(1)
+    if (await expiring.count()) await expect(expiring.first().getByRole("button", { name: /dismiss/i, includeHidden: true })).toHaveCount(1)
 
     const hidden = await page.locator('[data-slot="carousel-item"][aria-hidden="true"]').count()
     expect(hidden).toBe(n - 1)
