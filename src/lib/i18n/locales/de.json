@@ -1492,7 +1492,8 @@
         "upgrade": "Upgrade für weitere Banken",
         "noneOption": "Überspringen — ich zahle manuell",
         "linked": "Verknüpft mit {{bank}}",
-        "loading": "Deine Bankkonten werden geladen…"
+        "loading": "Deine Bankkonten werden geladen…",
+        "changeCurrency": "Währung: {{code}}. Währung ändern"
       },
       "issuer": {
         "help": "Wähle die Bank, die dir die Karte gegeben hat, oder füge sie hinzu. Sie wird zu einem deiner Bankkonten, und die Farben der Karte kommen von dort.",
