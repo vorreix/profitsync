@@ -1492,7 +1492,8 @@
         "upgrade": "Passa a un piano superiore per più banche",
         "noneOption": "Salta — la pagherò manualmente",
         "linked": "Collegata a {{bank}}",
-        "loading": "Caricamento dei tuoi conti bancari…"
+        "loading": "Caricamento dei tuoi conti bancari…",
+        "changeCurrency": "Valuta: {{code}}. Cambia valuta"
       },
       "issuer": {
         "help": "Scegli la banca che ti ha dato la carta, o aggiungila. Diventerà uno dei tuoi conti bancari e i colori della carta verranno da lì.",

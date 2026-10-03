@@ -2,14 +2,15 @@ import { useEffect, useId, useState, type KeyboardEvent } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Check, Crown, HandCoins, Loader as Loader2, Plus } from "lucide-react"
+import { Check, ChevronDown, Crown, HandCoins, Loader as Loader2, Plus } from "lucide-react"
 import { apiErrorMessage, apiErrorUpgradeHint, apiPost } from "@/lib/api"
-import { amountExceedsLimit } from "@/lib/money"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { accountCurrency, accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BankNameCombobox } from "@/components/wealth/BankNameCombobox"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +19,9 @@ import { Label } from "@/components/ui/label"
 /**
  * Pick one of the workspace's active banks (logo, name, balance), or add one
  * right here: the inline mini-form creates the bank through the normal
- * POST /api/wealth/accounts and selects it. At the plan's bank allowance the
+ * POST /api/wealth/accounts and selects it. The bank's currency starts as the
+ * workspace's and is changed from the symbol at the start of the balance
+ * field — the amount is in the bank's own currency, so the two sit together. At the plan's bank allowance the
  * form gives way to the crown, which hands off to the upgrade prompt.
  *
  * With `allowNone` a first row offers "no bank" (value "") — the credit
@@ -69,14 +72,15 @@ export function BankPicker({
   const { t } = useTranslation("wealth")
   const { getToken } = useAuth()
   const uid = useId()
-  const symbol = currencySymbol(currency)
 
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState("")
   const [domain, setDomain] = useState("")
   const [logoUrl, setLogoUrl] = useState("")
   const [balance, setBalance] = useState("")
+  const [bankCurrency, setBankCurrency] = useState(currency)
   const [saving, setSaving] = useState(false)
+  const symbol = currencySymbol(bankCurrency)
 
   const empty = banks.length === 0
   useEffect(() => {
@@ -117,6 +121,7 @@ export function BankPicker({
     setDomain("")
     setLogoUrl("")
     setBalance("")
+    setBankCurrency(currency)
   }
 
   async function createBank() {
@@ -135,6 +140,7 @@ export function BankPicker({
         type: "bank",
         bank_name: bankName,
         opening_balance: opening,
+        currency_code: bankCurrency,
         icon: "bank",
         brand_domain: domain,
         logo_url: logoUrl,
@@ -259,18 +265,35 @@ export function BankPicker({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`${uid}-bank-balance`}>{t("cardWizard.bank.openingBalance", { symbol })}</Label>
-            <Input
-              id={`${uid}-bank-balance`}
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              value={balance}
-              placeholder={`${symbol} 0.00`}
-              className="min-h-11 text-base"
-              onChange={(e) => setBalance(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void createBank() } }}
-            />
+            <div className="flex min-h-11 items-stretch rounded-md border border-input shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30">
+              <CurrencyCombobox
+                value={bankCurrency}
+                onValueChange={setBankCurrency}
+                disabled={saving}
+                trigger={
+                  <button
+                    type="button"
+                    aria-label={t("cardWizard.bank.changeCurrency", { code: bankCurrency })}
+                    title={t("cardWizard.bank.changeCurrency", { code: bankCurrency })}
+                    className="flex min-w-11 shrink-0 items-center gap-1.5 rounded-s-md border-e px-3 text-base font-medium outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted disabled:opacity-50"
+                  >
+                    <span aria-hidden>{symbol}</span>
+                    {symbol !== bankCurrency && <span aria-hidden className="font-mono text-xs text-muted-foreground">{bankCurrency}</span>}
+                    <ChevronDown className="size-3.5 opacity-60" aria-hidden />
+                  </button>
+                }
+              />
+              <Input
+                id={`${uid}-bank-balance`}
+                type="number"
+                min="0"
+                {...amountInputProps(bankCurrency)}
+                value={balance}
+                className="min-h-11 flex-1 rounded-none rounded-e-md border-0 text-base shadow-none focus-visible:ring-0 dark:bg-transparent"
+                onChange={(e) => setBalance(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void createBank() } }}
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-2">
             {!(empty && autoExpandWhenEmpty) && (

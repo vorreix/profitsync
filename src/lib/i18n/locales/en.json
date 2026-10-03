@@ -1556,7 +1556,8 @@
         "upgrade": "Upgrade to add more banks",
         "noneOption": "Skip — I'll pay it manually",
         "linked": "Linked to {{bank}}",
-        "loading": "Loading your bank accounts…"
+        "loading": "Loading your bank accounts…",
+        "changeCurrency": "Currency: {{code}}. Change currency"
       },
       "issuer": {
         "help": "Pick the bank that gave you the card, or add it. It becomes one of your bank accounts, and the card's colours come from it.",
